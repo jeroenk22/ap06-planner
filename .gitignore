@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Database (bevat persoonsgegevens — NOOIT in repo!)
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.idea/
+*.swp
+*.swo
+.vscode/extensions.json
+
+# Test / Coverage
+.coverage
+htmlcov/
+.pytest_cache/
+.ruff_cache/
+
+# Uploads (tijdelijk)
+uploads/
+*.xlsx.bak
