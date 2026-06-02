@@ -11,7 +11,7 @@ Kritieke bevindingen uit analyse van 6 voorbeeldbestanden:
 """
 
 import re
-from datetime import datetime
+from datetime import date, datetime
 from io import BytesIO
 from pathlib import Path
 
@@ -24,6 +24,24 @@ GELDIG_TABBLAD_PATROON = re.compile(
     r"\d{1,2}-\d{1,2}\s+(maandag|dinsdag|woensdag|donderdag|vrijdag|zaterdag|zondag)",
     re.IGNORECASE,
 )
+
+_TIJDPATROON = re.compile(r"\b\d{1,2}(?:[.,]\d{1,2})?\s*-\s*\d{1,2}(?:[.,]\d{1,2})?\b")
+
+
+def _locatie_tekst(locatie: str | None, klant: str | None) -> str | None:
+    """Kies de cel die het tijdvenster bevat, ongeacht kolomnaam."""
+    loc_heeft_tijd = bool(locatie and _TIJDPATROON.search(locatie))
+    klt_heeft_tijd = bool(klant and _TIJDPATROON.search(klant))
+    if loc_heeft_tijd and klt_heeft_tijd:
+        return f"{locatie} {klant}"
+    if loc_heeft_tijd:
+        return locatie
+    if klt_heeft_tijd:
+        return klant
+    if locatie and klant:
+        return f"{locatie} {klant}"
+    return locatie or klant or None
+
 
 SKIP_WIJZIGINGEN = re.compile(
     r"\b(vervallen|intrekken|ingetrokken)\b",
@@ -44,6 +62,19 @@ def detecteer_datum(ws, eurofins_formaat: bool) -> str | None:
             dt = row[col_idx]
             return dt.strftime("%d-%m-%Y")
     return None
+
+
+def _datum_uit_tabnaam(tab_naam: str) -> str | None:
+    """Fallback: haal datum uit tabbladnaam zoals '20-4 maandag'."""
+    match = re.search(r"(\d{1,2})-(\d{1,2})", tab_naam)
+    if not match:
+        return None
+    dag, maand = int(match.group(1)), int(match.group(2))
+    jaar = date.today().year
+    try:
+        return datetime(jaar, maand, dag).strftime("%d-%m-%Y")
+    except ValueError:
+        return None
 
 
 def detecteer_dagnaam(ws) -> str | None:
@@ -91,7 +122,10 @@ def lees_planningsbestand(
     Hoofdfunctie: lees een xlsx-planningsbestand in.
     Retourneert een lijst van dicts met {tabblad, datum, dagnaam, regels: [PlanningRegel]}.
     """
-    wb = load_workbook(bron, data_only=True, read_only=False)
+    try:
+        wb = load_workbook(bron, data_only=True, read_only=False)
+    except Exception as e:
+        raise ValueError(f"Kan planningsbestand niet laden: {e}") from e
 
     geselecteerde_tabs = selecteer_tabbladen(wb.sheetnames)
     if not geselecteerde_tabs:
@@ -108,7 +142,7 @@ def lees_planningsbestand(
             continue
 
         eurofins = is_eurofins_formaat(kolommap)
-        datum = detecteer_datum(ws, eurofins_formaat=eurofins)
+        datum = detecteer_datum(ws, eurofins_formaat=eurofins) or _datum_uit_tabnaam(tab_naam)
         dagnaam = detecteer_dagnaam(ws)
 
         # Tabblad-naam geeft ook datuminfo: "13-4 Maandag"
@@ -124,10 +158,30 @@ def lees_planningsbestand(
             "datum": datum,
             "dagnaam": dagnaam,
             "regels": regels,
+            "kolommap": dict(kolommap),
         })
 
     wb.close()
     return resultaten
+
+
+def _detecteer_tijdvenster_kolom(ws, header_rij: int, skip_kolommen: set[int]) -> int | None:
+    """
+    Scan de eerste datarijen en retourneer de kolomindex die het vaakst
+    een tijdpatroon bevat (bijv. '7-18', '8.30-10.30'), ongeacht de kolomnaam.
+    """
+    scores: dict[int, int] = {}
+    for row in ws.iter_rows(
+        min_row=header_rij + 1,
+        max_row=min(header_rij + 10, ws.max_row or header_rij + 10),
+        values_only=True,
+    ):
+        for idx, cel in enumerate(row):
+            if idx >= 10 or idx in skip_kolommen:  # alleen kolommen A t/m J
+                continue
+            if cel and isinstance(cel, str) and _TIJDPATROON.search(cel):
+                scores[idx] = scores.get(idx, 0) + 1
+    return max(scores, key=scores.get) if scores else None
 
 
 def _verwerk_rijen(
@@ -139,16 +193,13 @@ def _verwerk_rijen(
     """Verwerk alle datarijen onder de headerrij."""
     regels = []
 
-    # Bepaal kolomindices op basis van formaat
     idx_monsternemer = kolommap.get("monsternemer")
     idx_wijzigingen = kolommap.get("wijzigingen")
+    idx_locatie_naam = kolommap.get("locatie") or kolommap.get("laadlocatie")
 
-    if eurofins:
-        idx_locatie = None
-        idx_klant = kolommap.get("klant")  # tijdvenster staat hier
-    else:
-        idx_locatie = kolommap.get("locatie")
-        idx_klant = kolommap.get("klant")
+    # Detecteer welke kolom tijdvenster-data bevat op basis van celinhoud
+    skip = {i for i in [idx_monsternemer, idx_wijzigingen] if i is not None}
+    idx_tijdvenster = _detecteer_tijdvenster_kolom(ws, header_rij, skip)
 
     for row in ws.iter_rows(min_row=header_rij + 1, values_only=True):
         # Skip volledig lege rijen
@@ -160,8 +211,13 @@ def _verwerk_rijen(
             continue  # Geen monsternemer = skip
 
         wijzigingen = _cel(row, idx_wijzigingen)
-        locatie_raw = _cel(row, idx_locatie) if idx_locatie is not None else None
-        klant_raw = _cel(row, idx_klant) if idx_klant is not None else None
+        tv_tekst = _cel(row, idx_tijdvenster) if idx_tijdvenster is not None else None
+        loc_naam = _cel(row, idx_locatie_naam) if (
+            idx_locatie_naam is not None and idx_locatie_naam != idx_tijdvenster
+        ) else None
+
+        locatie_raw = _locatie_tekst(loc_naam, tv_tekst)
+        klant_raw = None
 
         # Skip bij "vervallen" / "intrekken" / "ingetrokken"
         if wijzigingen and SKIP_WIJZIGINGEN.search(wijzigingen):

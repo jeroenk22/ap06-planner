@@ -27,7 +27,10 @@ def format_datum_nl(dag: date) -> str:
 
 def voeg_minuten_toe(tijdstr: str, minuten: int) -> str:
     """Voeg minuten toe aan een tijdstring 'HH:MM'. Retourneert 'HH:MM'."""
-    uren, mins = map(int, tijdstr.split(":"))
+    try:
+        uren, mins = map(int, tijdstr.split(":"))
+    except (ValueError, AttributeError) as e:
+        raise ValueError(f"Ongeldige tijdstring: {tijdstr!r}") from e
     totaal = uren * 60 + mins + minuten
     return f"{(totaal // 60) % 24:02d}:{totaal % 60:02d}"
 

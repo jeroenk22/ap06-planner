@@ -9,7 +9,7 @@ Voorbeelden uit de data:
   "Marrum JB 7-9 LOS"               → {plaats: Marrum, start: 07:00, eind: 09:00, type: LOS}
   "Oude-tonge BAX 5.30-7.30 LAD"   → {plaats: Oude-tonge, start: 05:30, eind: 07:30}
 
-Tijdvenster patroon: \d+[.]\d+-\d+[.]\d+ of \d+-\d+
+Tijdvenster patroon: d+[.]d+-d+[.]d+ of d+-d+
 """
 
 import re
