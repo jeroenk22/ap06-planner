@@ -75,9 +75,8 @@ class TestParseJson:
 class TestGetClient:
     def test_zonder_api_key_raises(self):
         cs._client = None
-        with patch("os.getenv", return_value=None):
-            with pytest.raises(ValueError, match="ANTHROPIC_API_KEY"):
-                _get_client()
+        with patch("os.getenv", return_value=None), pytest.raises(ValueError, match="ANTHROPIC_API_KEY"):
+            _get_client()
 
     def test_met_api_key(self):
         cs._client = None

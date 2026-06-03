@@ -81,9 +81,8 @@ def verwerk_wijzigingen(
 
     w = wijzigingen.strip()
 
-    # Snel pad: negeer dagblok/ochtendblok zonder API-call
+    # Snel pad: dagblok/ochtendblok → negeer de wijziging, niet de regel
     if NEGEER_PATROON.search(w):
-        resultaat.negeer = True
         return resultaat
 
     # Claude-first: gebruik pre-computed cache of directe call

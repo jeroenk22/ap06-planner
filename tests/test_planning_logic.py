@@ -1,8 +1,7 @@
 """Tests voor niet-UI logica in planning.py — _haversine_km, _kies_laatste_tv, _verwerk_monsternemer."""
 
-import math
 from datetime import date
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -12,7 +11,6 @@ from ap06_planner.pages.planning import (
     _kies_laatste_tv,
     _verwerk_monsternemer,
 )
-
 
 # ─── Hulpfuncties ────────────────────────────────────────────────────────────
 
@@ -30,26 +28,26 @@ def _tv(plaats="Bladel", begintijd="07:00", eindtijd="18:00", **kwargs) -> Tijdv
 
 
 def _monsternemer(**kwargs) -> Monsternemer:
-    defaults = dict(
-        id=1,
-        code="AP06",
-        voornaam="Jan",
-        tussenvoegsel=None,
-        achternaam="de Vries",
-        adres="Straat 1",
-        postcode="1234AB",
-        woonplaats="Amsterdam",
-        land="Nederland",
-        telefoon="0612345678",
-        laadinstructie="Bel aan",
-        ophaaldagen=["ma", "wo", "vr"],
-        uiterlijke_tijd="21:30",
-        uiterlijke_plantijd=None,
-        bijzonderheden=None,
-        aantal_lege_bakken=2,
-        sjabloon=False,
-        ophalen=True,
-    )
+    defaults = {
+        "id": 1,
+        "code": "AP06",
+        "voornaam": "Jan",
+        "tussenvoegsel": None,
+        "achternaam": "de Vries",
+        "adres": "Straat 1",
+        "postcode": "1234AB",
+        "woonplaats": "Amsterdam",
+        "land": "Nederland",
+        "telefoon": "0612345678",
+        "laadinstructie": "Bel aan",
+        "ophaaldagen": ["ma", "wo", "vr"],
+        "uiterlijke_tijd": "21:30",
+        "uiterlijke_plantijd": None,
+        "bijzonderheden": None,
+        "aantal_lege_bakken": 2,
+        "sjabloon": False,
+        "ophalen": True,
+    }
     defaults.update(kwargs)
     return Monsternemer(**defaults) # type: ignore[arg-type]
 
@@ -678,8 +676,8 @@ class TestVerwerkMonsternemer:
         # Cap: min("12:00", "18:00") = "12:00"
         assert "12:00" in (result["laatste_tijdvenster"] or "")
 
-    def test_wijziging_negeer_in_regex_pad(self):
-        """Wijziging met negeer=True slaat de regel over (regex-pad)."""
+    def test_wijziging_dagblok_negeert_wijziging_niet_regel(self):
+        """dagblok in wijzigingen negeert de wijziging maar slaat de regel NIET over."""
         m = _monsternemer(ophaaldagen=["ma"])
         maandag = date(2026, 6, 1)
         regels = [_regel(locatie_raw="Bladel 7-18 LAD", wijzigingen="dagblok")]
@@ -702,5 +700,6 @@ class TestVerwerkMonsternemer:
             )
 
         assert result is not None
-        # Regel overgeslagen → geen tijdvensters
-        assert result["laatste_tijdvenster"] is None
+        # Tijdvenster wél gevonden — dagblok negeert de wijziging, niet de regel
+        assert result["laatste_tijdvenster"] is not None
+        assert "7:00" in result["laatste_tijdvenster"] or "18:00" in result["laatste_tijdvenster"]

@@ -5,13 +5,13 @@ Stadium 1: Upload → JSON debug output per monsternemer.
 
 import json
 import math
+import re
 from datetime import timedelta
 from io import BytesIO
 
 import streamlit as st
 
-from ap06_planner.models.schemas import ALGEMENE_INSTRUCTIE_AP06
-from ap06_planner.models.schemas import Tijdvenster
+from ap06_planner.models.schemas import ALGEMENE_INSTRUCTIE_AP06, Tijdvenster
 from ap06_planner.parsers.tijdvenster import parse_tijdvenster
 from ap06_planner.parsers.wijzigingen import pas_wijziging_toe, verwerk_wijzigingen
 from ap06_planner.parsers.xlsx_parser import lees_planningsbestand
@@ -23,6 +23,8 @@ from ap06_planner.services.db_service import haal_alle_monsternemers, zoek_monst
 from ap06_planner.services.nager_service import eerstvolgende_ophaaldag, is_feestdag
 from ap06_planner.services.osrm_service import _geocodeer, bereken_aankomsttijd
 from ap06_planner.utils.date_utils import DAGAFKORTINGEN, format_datum_nl, is_ophaaldag, parse_datum
+
+_DAGBLOK_RE = re.compile(r"\b(?:dagblok|ochtendblok)\b", re.IGNORECASE)
 
 
 def render():
@@ -88,7 +90,10 @@ def render():
             )
 
             batch_input = [
-                {"locatie": r.locatie_raw or r.klant_raw or "", "wijziging": r.wijzigingen}
+                {
+                    "locatie": r.locatie_raw or r.klant_raw or "",
+                    "wijziging": _DAGBLOK_RE.sub("", r.wijzigingen or "").strip() or None,
+                }
                 for r in regels
                 if not r.overgeslagen and (r.locatie_raw or r.klant_raw)
             ]
@@ -98,7 +103,7 @@ def render():
                 status.write(f"   ↳ AI analyseert {len(batch_input)} locaties…")
                 batch_resultaten_lijst, batch_fout = verwerk_planningsregels_batch(batch_input)
                 if not batch_fout and batch_resultaten_lijst:
-                    for invoer, uitvoer in zip(batch_input, batch_resultaten_lijst):
+                    for invoer, uitvoer in zip(batch_input, batch_resultaten_lijst, strict=False):
                         claude_tv_cache[(invoer["locatie"], invoer["wijziging"])] = uitvoer
 
             status.write(f"   ↳ Ophaaldata en reistijden bepalen voor {len(per_monsternemer)} monsternemers…")
@@ -158,11 +163,54 @@ def render():
                 for n in res["overgeslagen_namen"]:
                     st.write(f"- {n}")
 
-    # Toon JSON output
+    # Actuele planning overzicht — gegroepeerd op plandag
     st.divider()
-    st.subheader("🔍 Debug JSON output")
-    st.caption("Dit is de ruwe output van Stadium 1. Controleer op correctheid.")
+    st.subheader("📋 Actuele planning")
 
+    plandag_output: dict[str, list[dict]] = {}
+    for rec in alle_output:
+        plandag = rec.get("inplannen_op") or rec.get("datum") or "—"
+        al_ingepland = {r["naam_monsternemer"] for r in plandag_output.get(plandag, [])}
+        if rec.get("naam_monsternemer") not in al_ingepland:
+            plandag_output.setdefault(plandag, []).append(rec)
+
+    def _plandag_sorteersleutel(dag: str) -> str:
+        # "woensdag 03-06-2026" → "2026-06-03" voor sortering
+        delen = dag.split()
+        if len(delen) == 2:
+            d, m, y = delen[1].split("-")
+            return f"{y}-{m}-{d}"
+        return dag
+
+    for plandag in sorted(plandag_output, key=_plandag_sorteersleutel):
+        records = sorted(plandag_output[plandag], key=lambda r: r.get("naam_monsternemer", ""))
+        # Dag met hoofdletter
+        plandag_label = plandag[0].upper() + plandag[1:] if plandag else plandag
+        st.markdown(f"### {plandag_label}")
+
+        for rec in records:
+            naam = rec.get("naam_monsternemer", "")
+            ophaaldagen = rec.get("standaard_ophaaldagen") or []
+            gewensttijd = rec.get("gewensttijd") or "—"
+            toelichting = rec.get("inplannen_toelichting") or ""
+
+            # "Monsters van vandaag" niet tonen
+            toon_toelichting = toelichting if "geen ophaaldag" not in toelichting else ""
+
+            ophaaldagen_str = f"({', '.join(ophaaldagen)})" if ophaaldagen else ""
+            naam_label = f"{naam} {ophaaldagen_str}".strip()
+
+            col_naam, col_tijd, col_reden = st.columns([4, 2, 4])
+            with col_naam:
+                st.write(naam_label)
+            with col_tijd:
+                st.write(gewensttijd)
+            with col_reden:
+                if toon_toelichting:
+                    st.caption(toon_toelichting)
+
+    # JSON output ingeklapt onderaan
+    st.divider()
     col1, col2 = st.columns([3, 1])
     with col2:
         st.download_button(
@@ -171,18 +219,19 @@ def render():
             file_name=f"ap06_output_{alle_output[0].get('datum', 'datum') if alle_output else 'output'}.json",
             mime="application/json",
         )
-
-    st.json(alle_output)
+    with st.expander("🔍 Debug JSON output", expanded=False):
+        st.caption("Ruwe output van Stadium 1.")
+        st.json(alle_output)
 
 
 
 def _haversine_km(lon1: float, lat1: float, lon2: float, lat2: float) -> float:
-    R = 6371
+    r = 6371
     dlat = math.radians(lat2 - lat1)
     dlon = math.radians(lon2 - lon1)
     a = (math.sin(dlat / 2) ** 2
          + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2)
-    return R * 2 * math.asin(math.sqrt(a))
+    return r * 2 * math.asin(math.sqrt(a))
 
 
 def _kies_laatste_tv(
@@ -280,7 +329,8 @@ def _verwerk_monsternemer(
     min_eind_cap: str | None = None
     for r in regels:
         locatie_tekst = r.locatie_raw or r.klant_raw or ""
-        sleutel = (locatie_tekst, r.wijzigingen)
+        wijziging_genorm = _DAGBLOK_RE.sub("", r.wijzigingen or "").strip() or None
+        sleutel = (locatie_tekst, wijziging_genorm)
         claude_data = (claude_tv_cache or {}).get(sleutel)
 
         if claude_data:
@@ -427,7 +477,7 @@ def _verwerk_monsternemer(
     return {
         "dagnaam": dagnaam,
         "datum": datum.strftime("%d-%m-%Y") if datum else None,
-        "naam_monsternemer": naam,
+        "naam_monsternemer": monsternemer.volledige_naam if monsternemer else naam,
         "adres": monsternemer.adres if monsternemer else None,
         "postcode": monsternemer.postcode if monsternemer else None,
         "woonplaats": monsternemer.woonplaats if monsternemer else None,

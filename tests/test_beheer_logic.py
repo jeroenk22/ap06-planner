@@ -10,24 +10,24 @@ from ap06_planner.pages.beheer import _dict_naar_monsternemer, _heeft_wijziginge
 
 def _form_data(**kwargs) -> dict:
     """Standaard formulierdata zoals beheer.py die produceert."""
-    defaults = dict(
-        voornaam="Jan",
-        tussenvoegsel="de",
-        achternaam="Vries",
-        adres="Straat 1",
-        postcode="1234ab",
-        woonplaats="Amsterdam",
-        land="Nederland",
-        telefoon="0612345678",
-        ophaaldagen=["ma", "wo"],
-        laadinstructie="Bel aan",
-        uiterlijke_tijd="21:30",
-        uiterlijke_plantijd="20:00",
-        bijzonderheden="Hond aanwezig",
-        aantal_lege_bakken=2,
-        sjabloon=False,
-        ophalen=True,
-    )
+    defaults = {
+        "voornaam": "Jan",
+        "tussenvoegsel": "de",
+        "achternaam": "Vries",
+        "adres": "Straat 1",
+        "postcode": "1234ab",
+        "woonplaats": "Amsterdam",
+        "land": "Nederland",
+        "telefoon": "0612345678",
+        "ophaaldagen": ["ma", "wo"],
+        "laadinstructie": "Bel aan",
+        "uiterlijke_tijd": "21:30",
+        "uiterlijke_plantijd": "20:00",
+        "bijzonderheden": "Hond aanwezig",
+        "aantal_lege_bakken": 2,
+        "sjabloon": False,
+        "ophalen": True,
+    }
     defaults.update(kwargs)
     return defaults
 
@@ -134,13 +134,13 @@ class TestDictNaarMonsternemer:
 
 
 def _monsternemer(**kwargs) -> Monsternemer:
-    defaults = dict(
-        id=1, code="AP06", voornaam="Jan", tussenvoegsel=None, achternaam="Smit",
-        adres="Straat 1", postcode="1234AB", woonplaats="Amsterdam", land="Nederland",
-        telefoon="0612345678", laadinstructie=None, ophaaldagen=["ma", "wo"],
-        uiterlijke_tijd=None, uiterlijke_plantijd=None, bijzonderheden=None,
-        aantal_lege_bakken=2, sjabloon=False, ophalen=True,
-    )
+    defaults = {
+        "id": 1, "code": "AP06", "voornaam": "Jan", "tussenvoegsel": None, "achternaam": "Smit",
+        "adres": "Straat 1", "postcode": "1234AB", "woonplaats": "Amsterdam", "land": "Nederland",
+        "telefoon": "0612345678", "laadinstructie": None, "ophaaldagen": ["ma", "wo"],
+        "uiterlijke_tijd": None, "uiterlijke_plantijd": None, "bijzonderheden": None,
+        "aantal_lege_bakken": 2, "sjabloon": False, "ophalen": True,
+    }
     defaults.update(kwargs)
     return Monsternemer(**defaults)
 
@@ -276,7 +276,7 @@ class TestDbServiceMigratie:
         conn.close()
 
         # initialiseer_db moet de ontbrekende kolommen toevoegen
-        from ap06_planner.services.db_service import initialiseer_db, haal_alle_monsternemers
+        from ap06_planner.services.db_service import haal_alle_monsternemers, initialiseer_db
         initialiseer_db(db)
 
         # DB mag nu geen fout gooien bij ophalen
@@ -286,9 +286,9 @@ class TestDbServiceMigratie:
     def test_migratie_idempotent_op_bestaande_db(self, tmp_path):
         """Tweede aanroep van initialiseer_db crasht niet."""
         from ap06_planner.services.db_service import (
-            initialiseer_db, voeg_monsternemer_toe, haal_alle_monsternemers
+            haal_alle_monsternemers,
+            initialiseer_db,
         )
-        from ap06_planner.models.schemas import Monsternemer
         db = tmp_path / "test.db"
         initialiseer_db(db)
         initialiseer_db(db)  # Tweede keer, kolommen bestaan al
@@ -301,9 +301,10 @@ class TestDbServiceFouten:
     def test_voeg_toe_db_fout_raises(self, tmp_path):
         """Database fout bij INSERT gooit RuntimeError."""
         import sqlite3
-        from unittest.mock import patch, MagicMock
-        from ap06_planner.services.db_service import voeg_monsternemer_toe
+        from unittest.mock import MagicMock, patch
+
         from ap06_planner.models.schemas import Monsternemer
+        from ap06_planner.services.db_service import voeg_monsternemer_toe
 
         db = tmp_path / "test.db"
         m = Monsternemer(
@@ -318,14 +319,15 @@ class TestDbServiceFouten:
             sqlite3.OperationalError("disk full")
 
         with patch("ap06_planner.services.db_service.initialiseer_db"), \
-             patch("ap06_planner.services.db_service._get_conn", return_value=mock_conn):
-            with pytest.raises(RuntimeError, match="Database fout"):
-                voeg_monsternemer_toe(m, db)
+             patch("ap06_planner.services.db_service._get_conn", return_value=mock_conn), \
+             pytest.raises(RuntimeError, match="Database fout"):
+            voeg_monsternemer_toe(m, db)
 
     def test_haal_alle_db_fout_raises(self, tmp_path):
         """Database fout bij SELECT gooit RuntimeError."""
         import sqlite3
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
+
         from ap06_planner.services.db_service import haal_alle_monsternemers
 
         db = tmp_path / "test.db"
@@ -334,16 +336,17 @@ class TestDbServiceFouten:
             sqlite3.OperationalError("locked")
 
         with patch("ap06_planner.services.db_service.initialiseer_db"), \
-             patch("ap06_planner.services.db_service._get_conn", return_value=mock_conn):
-            with pytest.raises(RuntimeError, match="Database fout"):
-                haal_alle_monsternemers(db)
+             patch("ap06_planner.services.db_service._get_conn", return_value=mock_conn), \
+             pytest.raises(RuntimeError, match="Database fout"):
+            haal_alle_monsternemers(db)
 
     def test_update_db_fout_raises(self, tmp_path):
         """Database fout bij UPDATE gooit RuntimeError."""
         import sqlite3
-        from unittest.mock import patch, MagicMock
-        from ap06_planner.services.db_service import update_monsternemer
+        from unittest.mock import MagicMock, patch
+
         from ap06_planner.models.schemas import Monsternemer
+        from ap06_planner.services.db_service import update_monsternemer
 
         db = tmp_path / "test.db"
         m = Monsternemer(
@@ -358,14 +361,15 @@ class TestDbServiceFouten:
             sqlite3.OperationalError("disk full")
 
         with patch("ap06_planner.services.db_service.initialiseer_db"), \
-             patch("ap06_planner.services.db_service._get_conn", return_value=mock_conn):
-            with pytest.raises(RuntimeError, match="Database fout"):
-                update_monsternemer(m, db)
+             patch("ap06_planner.services.db_service._get_conn", return_value=mock_conn), \
+             pytest.raises(RuntimeError, match="Database fout"):
+            update_monsternemer(m, db)
 
     def test_verwijder_db_fout_raises(self, tmp_path):
         """Database fout bij DELETE gooit RuntimeError."""
         import sqlite3
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
+
         from ap06_planner.services.db_service import verwijder_monsternemer
 
         db = tmp_path / "test.db"
@@ -374,6 +378,6 @@ class TestDbServiceFouten:
             sqlite3.OperationalError("locked")
 
         with patch("ap06_planner.services.db_service.initialiseer_db"), \
-             patch("ap06_planner.services.db_service._get_conn", return_value=mock_conn):
-            with pytest.raises(RuntimeError, match="Database fout"):
-                verwijder_monsternemer(1, db)
+             patch("ap06_planner.services.db_service._get_conn", return_value=mock_conn), \
+             pytest.raises(RuntimeError, match="Database fout"):
+            verwijder_monsternemer(1, db)

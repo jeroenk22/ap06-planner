@@ -1,8 +1,6 @@
 """Tests voor wijzigingen-verwerking."""
 
-import pytest
 from ap06_planner.parsers.wijzigingen import verwerk_wijzigingen
-from ap06_planner.parsers.tijdvenster import parse_tijdvenster
 
 
 def test_geen_wijzigingen():
@@ -44,13 +42,18 @@ def test_persoon_hele_dag():
 
 
 def test_negeer_dagblok():
+    # dagblok = negeer de wijziging (niet de regel) → leeg resultaat, negeer=False
     resultaat = verwerk_wijzigingen("dagblok")
-    assert resultaat.negeer is True
+    assert resultaat.negeer is False
+    assert resultaat.tijdvervang is None
+    assert resultaat.persoon_start_na is None
+    assert resultaat.persoon_eind_voor is None
 
 
 def test_negeer_ochtendblok():
     resultaat = verwerk_wijzigingen("ochtendblok")
-    assert resultaat.negeer is True
+    assert resultaat.negeer is False
+    assert resultaat.tijdvervang is None
 
 
 def test_vervallen_niet_in_wijzigingen():
