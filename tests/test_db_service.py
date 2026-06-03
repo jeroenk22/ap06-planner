@@ -39,7 +39,7 @@ def _m(**kwargs) -> Monsternemer:
         ophalen=True,
     )
     defaults.update(kwargs)
-    return Monsternemer(**defaults)
+    return Monsternemer(**defaults)  # type: ignore[arg-type]
 
 
 class TestInitialiseerDb:

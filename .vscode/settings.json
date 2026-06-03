@@ -9,5 +9,6 @@
   "python.analysis.typeCheckingMode": "basic",
   "[python]": {
     "editor.defaultFormatter": "charliermarsh.ruff"
-  }
+  },
+  "github-actions.workflows.pinned.enabled": false
 }

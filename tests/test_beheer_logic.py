@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from ap06_planner.models.schemas import Monsternemer
-from ap06_planner.pages.beheer import _dict_naar_monsternemer
+from ap06_planner.pages.beheer import _dict_naar_monsternemer, _heeft_wijzigingen
 
 
 def _form_data(**kwargs) -> dict:
@@ -133,11 +133,81 @@ class TestDictNaarMonsternemer:
         assert m.aantal_lege_bakken == 5
 
 
+def _monsternemer(**kwargs) -> Monsternemer:
+    defaults = dict(
+        id=1, code="AP06", voornaam="Jan", tussenvoegsel=None, achternaam="Smit",
+        adres="Straat 1", postcode="1234AB", woonplaats="Amsterdam", land="Nederland",
+        telefoon="0612345678", laadinstructie=None, ophaaldagen=["ma", "wo"],
+        uiterlijke_tijd=None, uiterlijke_plantijd=None, bijzonderheden=None,
+        aantal_lege_bakken=2, sjabloon=False, ophalen=True,
+    )
+    defaults.update(kwargs)
+    return Monsternemer(**defaults)
+
+
+class TestHeeftWijzigingen:
+    def test_identieke_data_geeft_false(self):
+        m = _monsternemer()
+        assert _heeft_wijzigingen(m, m) is False
+
+    def test_voornaam_gewijzigd(self):
+        oud = _monsternemer()
+        nieuw = _monsternemer(voornaam="Piet")
+        assert _heeft_wijzigingen(nieuw, oud) is True
+
+    def test_achternaam_gewijzigd(self):
+        oud = _monsternemer()
+        nieuw = _monsternemer(achternaam="Jansen")
+        assert _heeft_wijzigingen(nieuw, oud) is True
+
+    def test_ophaaldagen_gewijzigd(self):
+        oud = _monsternemer(ophaaldagen=["ma", "wo"])
+        nieuw = _monsternemer(ophaaldagen=["di", "do"])
+        assert _heeft_wijzigingen(nieuw, oud) is True
+
+    def test_ophaaldagen_volgorde_telt_mee(self):
+        """Volgorde in lijst telt mee — geen sortering toegepast."""
+        oud = _monsternemer(ophaaldagen=["ma", "wo"])
+        nieuw = _monsternemer(ophaaldagen=["wo", "ma"])
+        assert _heeft_wijzigingen(nieuw, oud) is True
+
+    def test_ophalen_flag_gewijzigd(self):
+        oud = _monsternemer(ophalen=True)
+        nieuw = _monsternemer(ophalen=False)
+        assert _heeft_wijzigingen(nieuw, oud) is True
+
+    def test_ophalen_false_lege_ophaaldagen_telt_als_wijziging(self):
+        """Lege ophaaldagen bij ophalen=False is een geldige wijziging t.o.v. gevulde lijst."""
+        oud = _monsternemer(ophaaldagen=["ma"], ophalen=True)
+        nieuw = _monsternemer(ophaaldagen=[], ophalen=False)
+        assert _heeft_wijzigingen(nieuw, oud) is True
+
+    def test_geen_wijziging_bij_ophalen_false_lege_ophaaldagen(self):
+        """Zelfde data met ophalen=False en lege ophaaldagen → geen wijziging."""
+        m = _monsternemer(ophaaldagen=[], ophalen=False)
+        assert _heeft_wijzigingen(m, m) is False
+
+    def test_bijzonderheden_none_vs_waarde(self):
+        oud = _monsternemer(bijzonderheden=None)
+        nieuw = _monsternemer(bijzonderheden="Hond aanwezig")
+        assert _heeft_wijzigingen(nieuw, oud) is True
+
+    def test_aantal_lege_bakken_gewijzigd(self):
+        oud = _monsternemer(aantal_lege_bakken=2)
+        nieuw = _monsternemer(aantal_lege_bakken=5)
+        assert _heeft_wijzigingen(nieuw, oud) is True
+
+    def test_sjabloon_gewijzigd(self):
+        oud = _monsternemer(sjabloon=False)
+        nieuw = _monsternemer(sjabloon=True)
+        assert _heeft_wijzigingen(nieuw, oud) is True
+
+
 class TestBeheerRenderViaAppTest:
     """Test Streamlit rendering van beheer.render() via AppTest.from_file."""
 
     def test_render_lege_database(self):
-        """render() met lege DB — alle tabs renderen zonder fout."""
+        """render() met lege DB — overzicht toont info-bericht zonder fout."""
         try:
             from streamlit.testing.v1 import AppTest
         except ImportError:
@@ -145,6 +215,32 @@ class TestBeheerRenderViaAppTest:
 
         helpers_dir = Path(__file__).parent / "helpers"
         at = AppTest.from_file(str(helpers_dir / "beheer_lege_db.py"), default_timeout=15)
+        at.run()
+        assert not at.exception
+
+    def test_render_met_data(self):
+        """render() met één monsternemer — overzichtstabel en navigatie renderen zonder fout."""
+        try:
+            from streamlit.testing.v1 import AppTest
+        except ImportError:
+            pytest.skip("streamlit.testing.v1 niet beschikbaar")
+
+        helpers_dir = Path(__file__).parent / "helpers"
+        at = AppTest.from_file(str(helpers_dir / "beheer_met_data.py"), default_timeout=15)
+        at.run()
+        assert not at.exception
+
+    def test_navigatie_naar_bewerken(self):
+        """Klik op Bewerken-knop wisselt naar bewerken-weergave zonder fout."""
+        try:
+            from streamlit.testing.v1 import AppTest
+        except ImportError:
+            pytest.skip("streamlit.testing.v1 niet beschikbaar")
+
+        helpers_dir = Path(__file__).parent / "helpers"
+        at = AppTest.from_file(str(helpers_dir / "beheer_met_data.py"), default_timeout=15)
+        at.run()
+        at.button[1].click()  # Bewerken-knop (index 1 na Toevoegen)
         at.run()
         assert not at.exception
 

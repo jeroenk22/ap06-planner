@@ -4,18 +4,25 @@ Stadium 1: Upload → JSON debug output per monsternemer.
 """
 
 import json
+import math
+from datetime import timedelta
 from io import BytesIO
 
 import streamlit as st
 
+from ap06_planner.models.schemas import ALGEMENE_INSTRUCTIE_AP06
+from ap06_planner.models.schemas import Tijdvenster
+from ap06_planner.parsers.tijdvenster import parse_tijdvenster
+from ap06_planner.parsers.wijzigingen import pas_wijziging_toe, verwerk_wijzigingen
 from ap06_planner.parsers.xlsx_parser import lees_planningsbestand
-from ap06_planner.parsers.tijdvenster import parse_tijdvenster, vergelijk_tijdvensters
-from ap06_planner.parsers.wijzigingen import verwerk_wijzigingen, pas_wijziging_toe
-from ap06_planner.services.db_service import zoek_monsternemer, haal_alle_monsternemers
-from ap06_planner.services.nager_service import is_feestdag, eerstvolgende_ophaaldag
-from ap06_planner.services.claude_service import match_monsternemer_naam
-from ap06_planner.utils.date_utils import is_ophaaldag, format_datum_nl, parse_datum
-from ap06_planner.models.schemas import ALGEMENE_INSTRUCTIE_AP06, PlanningOutput
+from ap06_planner.services.claude_service import (
+    match_monsternemer_naam,
+    verwerk_planningsregels_batch,
+)
+from ap06_planner.services.db_service import haal_alle_monsternemers, zoek_monsternemer
+from ap06_planner.services.nager_service import eerstvolgende_ophaaldag, is_feestdag
+from ap06_planner.services.osrm_service import _geocodeer, bereken_aankomsttijd
+from ap06_planner.utils.date_utils import DAGAFKORTINGEN, format_datum_nl, is_ophaaldag, parse_datum
 
 
 def render():
@@ -72,6 +79,30 @@ def render():
             f"{len(per_monsternemer)} unieke monsternemers"
         )
 
+        kolommap = tab.get("kolommap", {})
+        with st.expander("🔧 Debug: gedetecteerde kolommen", expanded=False):
+            st.json(kolommap)
+
+        # Batch-verwerking: alle locatie+wijziging paren in één Claude-call
+        batch_input = [
+            {
+                "locatie": r.locatie_raw or r.klant_raw or "",
+                "wijziging": r.wijzigingen,
+            }
+            for r in regels
+            if not r.overgeslagen and (r.locatie_raw or r.klant_raw)
+        ]
+        claude_tv_cache: dict[tuple, dict] = {}
+        if batch_input:
+            batch_resultaten_lijst, batch_fout = verwerk_planningsregels_batch(batch_input)
+            if batch_fout:
+                st.warning(f"⚠️ Claude batch-verwerking mislukt: {batch_fout} — regex-fallback actief")
+            elif batch_resultaten_lijst:
+                for invoer, uitvoer in zip(batch_input, batch_resultaten_lijst):
+                    sleutel = (invoer["locatie"], invoer["wijziging"])
+                    claude_tv_cache[sleutel] = uitvoer
+
+        overgeslagen_namen: list[str] = []
         for naam, naam_regels in per_monsternemer.items():
             output = _verwerk_monsternemer(
                 naam=naam,
@@ -80,8 +111,18 @@ def render():
                 dagnaam=dagnaam,
                 bekende_namen=bekende_namen,
                 bekende_monsternemers=bekende_monsternemers,
+                claude_tv_cache=claude_tv_cache,
             )
-            alle_output.append(output)
+            if output is not None:
+                alle_output.append(output)
+            else:
+                overgeslagen_namen.append(naam)
+
+        if overgeslagen_namen:
+            with st.expander(f"⏭️ Overgeslagen ({len(overgeslagen_namen)}) — geen geldige ophaaldagen", expanded=True):
+                st.caption("Deze monsternemers staan in het xlsx maar hebben geen geldige ophaaldagen in de database.")
+                for n in overgeslagen_namen:
+                    st.write(f"- {n}")
 
     # Toon JSON output
     st.divider()
@@ -100,6 +141,78 @@ def render():
     st.json(alle_output)
 
 
+
+def _haversine_km(lon1: float, lat1: float, lon2: float, lat2: float) -> float:
+    R = 6371
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = (math.sin(dlat / 2) ** 2
+         + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2)
+    return R * 2 * math.asin(math.sqrt(a))
+
+
+def _kies_laatste_tv(
+    tijdvensters: list,
+    woonplaats: str | None,
+    postcode: str | None,
+    bereken_tiebreak: bool = True,
+) -> tuple:
+    """
+    Kies het laatste tijdvenster. Bij gelijke eindtijd en bereken_tiebreak=True:
+    verste locatie van de woonplaats. Retourneert (Tijdvenster | None, extra_warnings: list[str]).
+    """
+    if not tijdvensters:
+        return None, []
+
+    max_eind = max(tv.eindtijd for tv in tijdvensters)
+    kandidaten = [tv for tv in tijdvensters if tv.eindtijd == max_eind]
+
+    if len(kandidaten) == 1:
+        return kandidaten[0], []
+
+    # Tie — meerdere locaties met dezelfde eindtijd
+    plaatsnamen = [tv.plaats for tv in kandidaten]
+
+    if not bereken_tiebreak:
+        return kandidaten[0], []
+
+    if not woonplaats:
+        return kandidaten[0], [
+            f"Meerdere tijdvensters eindigen op {max_eind} ({plaatsnamen}) — "
+            "geen woonplaats beschikbaar voor afstandsbepaling, eerste gekozen"
+        ]
+
+    thuis_query = f"{postcode} {woonplaats}, Nederland" if postcode else f"{woonplaats}, Nederland"
+    thuis_result = _geocodeer(thuis_query)
+    if not thuis_result:
+        return kandidaten[0], [
+            f"Meerdere tijdvensters eindigen op {max_eind} ({plaatsnamen}) — "
+            "geocoding woonplaats mislukt, eerste gekozen"
+        ]
+
+    _, (thuis_lon, thuis_lat) = thuis_result
+    verste_tv = None
+    max_km = -1.0
+
+    for tv in kandidaten:
+        plaats_result = _geocodeer(f"{tv.plaats}, Nederland")
+        if not plaats_result:
+            continue
+        _, (lon, lat) = plaats_result
+        km = _haversine_km(lon, lat, thuis_lon, thuis_lat)
+        if km > max_km:
+            max_km = km
+            verste_tv = tv
+
+    if verste_tv:
+        return verste_tv, [
+            f"Meerdere tijdvensters eindigen op {max_eind} ({plaatsnamen}) — "
+            f"verste van {woonplaats}: {verste_tv.plaats} ({max_km:.0f} km) → gekozen als laatste locatie"
+        ]
+
+    return kandidaten[0], []
+
+
 def _verwerk_monsternemer(
     naam: str,
     regels: list,
@@ -107,7 +220,8 @@ def _verwerk_monsternemer(
     dagnaam: str,
     bekende_namen: list[str],
     bekende_monsternemers: list,
-) -> dict:
+    claude_tv_cache: dict | None = None,
+) -> dict | None:
     """Verwerk alle regels van één monsternemer naar een output-dict."""
 
     warnings: list[str] = []
@@ -126,55 +240,155 @@ def _verwerk_monsternemer(
     if niet_in_db:
         warnings.append(f"Monsternemer '{naam}' NIET gevonden in database!")
 
-    # Verzamel alle tijdvensters (met wijzigingen verwerkt)
+    # Verzamel alle tijdvensters via Claude-cache (of regex-fallback)
     tijdvensters = []
+    geen_tv_regels = []
+    min_eind_cap: str | None = None
     for r in regels:
-        # Locatie: prefer 'locatie_raw', fallback 'klant_raw'
         locatie_tekst = r.locatie_raw or r.klant_raw or ""
-        tv = parse_tijdvenster(locatie_tekst)
-        if not tv:
-            continue
+        sleutel = (locatie_tekst, r.wijzigingen)
+        claude_data = (claude_tv_cache or {}).get(sleutel)
 
-        # Verwerk wijzigingen
-        if r.wijzigingen:
-            wijziging = verwerk_wijzigingen(r.wijzigingen)
-            if not wijziging.negeer:
-                tv = pas_wijziging_toe(tv, wijziging)
+        if claude_data:
+            if claude_data.get("overgeslagen"):
+                continue
+            eindtijd_raw = claude_data.get("eindtijd")
+            if not eindtijd_raw:
+                warnings.append(
+                    f"⚠️ Claude gaf geen eindtijd voor '{locatie_tekst}' — fallback naar 23:59"
+                )
+            tv = Tijdvenster(
+                plaats=claude_data.get("plaats") or "",
+                klant_naam="",
+                begintijd=claude_data.get("begintijd") or "00:00",
+                eindtijd=eindtijd_raw or "23:59",
+                type=claude_data.get("type") or "LAD",
+                nummer=claude_data.get("nummer"),
+                origineel=locatie_tekst,
+            )
+            if r.wijzigingen:
+                warnings.append(
+                    f"'{r.wijzigingen}' verwerkt → {tv.begintijd}-{tv.eindtijd} ({tv.plaats})"
+                )
+                wij = verwerk_wijzigingen(r.wijzigingen)
+                if wij.persoon_eind_voor and (
+                    min_eind_cap is None or wij.persoon_eind_voor < min_eind_cap
+                ):
+                    min_eind_cap = wij.persoon_eind_voor
+        else:
+            # Fallback: regex
+            tv = parse_tijdvenster(locatie_tekst)
+            if not tv:
+                geen_tv_regels.append(f"locatie={r.locatie_raw!r} klant={r.klant_raw!r}")
+                continue
+            if r.wijzigingen:
+                wijziging = verwerk_wijzigingen(r.wijzigingen)
+                if not wijziging.negeer:
+                    tv_voor = f"{tv.begintijd}-{tv.eindtijd}"
+                    tv = pas_wijziging_toe(tv, wijziging)
+                    if tv.begintijd != tv_voor.split("-")[0] or tv.eindtijd != tv_voor.split("-")[1]:
+                        warnings.append(
+                            f"Tijdvenster aangepast door '{r.wijzigingen}': "
+                            f"{tv_voor} → {tv.begintijd}-{tv.eindtijd} ({tv.plaats})"
+                        )
+                    if wijziging.persoon_eind_voor and (
+                        min_eind_cap is None or wijziging.persoon_eind_voor < min_eind_cap
+                    ):
+                        min_eind_cap = wijziging.persoon_eind_voor
+                else:
+                    continue
 
         tijdvensters.append(tv)
 
-    # Laatste tijdvenster bepalen
-    laatste_tv = vergelijk_tijdvensters(tijdvensters) if tijdvensters else None
+    if geen_tv_regels:
+        warnings.append(f"Geen tijdvenster gevonden in: {'; '.join(geen_tv_regels)}")
 
-    # Ophaaldag-logica
-    ophaaldagen = monsternemer.ophaaldagen if monsternemer else []
+    if tijdvensters:
+        warnings.append(
+            "Geparsede tijdvensters: "
+            + " | ".join(f"{t.plaats} {t.begintijd}-{t.eindtijd}" for t in tijdvensters)
+        )
+
+    # Ophaaldag-logica — filter ongeldige waarden zoals "geen"
+    ophaaldagen_raw = monsternemer.ophaaldagen if monsternemer else []
+    ophaaldagen = [d for d in ophaaldagen_raw if d in DAGAFKORTINGEN]
+
+    # Monsternemer zonder geldige ophaaldagen overslaan
+    if monsternemer and not ophaaldagen:
+        return None
+
     huidige_dag_is_ophaaldag = is_ophaaldag(datum, ophaaldagen) if datum and ophaaldagen else False
+
+    # Laatste tijdvenster bepalen — tiebreak (geocoding) alleen nodig op een echte ophaaldag
+    woonplaats_m = monsternemer.woonplaats if monsternemer else None
+    postcode_m = monsternemer.postcode if monsternemer else None
+    laatste_tv, tie_warnings = _kies_laatste_tv(
+        tijdvensters, woonplaats_m, postcode_m,
+        bereken_tiebreak=huidige_dag_is_ophaaldag,
+    )
+    warnings.extend(tie_warnings)
+
+    # Effectieve eindtijd: cap van 'persoon_eind_voor' wint van tijdvenster-eindtijd
+    effective_eindtijd: str | None = None
+    if laatste_tv:
+        effective_eindtijd = (
+            min(min_eind_cap, laatste_tv.eindtijd)
+            if min_eind_cap
+            else laatste_tv.eindtijd
+        )
 
     # Inplanning
     inplannen_op_str = ""
     inplannen_toelichting = None
     gewensttijd_begin = "10:00"
-    gewensttijd_eind = "23:59"
+    gewensttijd_eind = monsternemer.uiterlijke_tijd if monsternemer else None
+    gewensttijd_eind = gewensttijd_eind or "23:59"
 
     if datum and ophaaldagen:
         if huidige_dag_is_ophaaldag:
             if is_feestdag(datum):
-                # Feestdag! Zoek eerstvolgende ophaaldag
                 volgende, _ = eerstvolgende_ophaaldag(datum, ophaaldagen)
                 inplannen_op_str = format_datum_nl(volgende)
                 inplannen_toelichting = f"Feestdag op {datum.strftime('%d-%m-%Y')} → verschoven"
-                gewensttijd_begin = "10:00"
             else:
                 inplannen_op_str = format_datum_nl(datum)
-                if laatste_tv:
-                    gewensttijd_begin = laatste_tv.eindtijd
-                    # Reistijdberekening volgt in latere iteratie
+                if laatste_tv and monsternemer and effective_eindtijd:
+                    vertrekplaats = laatste_tv.plaats
+                    gewensttijd_begin, gewensttijd_eind, reistijd_debug = bereken_aankomsttijd(
+                        vertrekplaats=vertrekplaats,
+                        woonplaats=monsternemer.woonplaats,
+                        woonplaats_postcode=monsternemer.postcode,
+                        eind_tijdvenster=effective_eindtijd,
+                        uiterlijke_tijd=monsternemer.uiterlijke_tijd,
+                    )
+                    warnings.append(f"Reistijd: {reistijd_debug}")
+
+                    # Onmogelijk venster: aankomsttijd valt na uiterlijke_tijd
+                    if monsternemer.uiterlijke_tijd and gewensttijd_begin > monsternemer.uiterlijke_tijd:
+                        warnings.append(
+                            f"⚠️ Aankomsttijd {gewensttijd_begin} valt na uiterlijke tijd "
+                            f"{monsternemer.uiterlijke_tijd} — tijdconflict"
+                        )
+                        gewensttijd_eind = "23:59"
+
+                    # Planningtechnisch te laat? → verschuif naar volgende ophaaldag
+                    if monsternemer.uiterlijke_plantijd and gewensttijd_begin > monsternemer.uiterlijke_plantijd:
+                        volgende, _ = eerstvolgende_ophaaldag(datum + timedelta(days=1), ophaaldagen)
+                        inplannen_op_str = format_datum_nl(volgende)
+                        inplannen_toelichting = (
+                            f"Te laat thuis ({gewensttijd_begin} > uiterlijke plantijd "
+                            f"{monsternemer.uiterlijke_plantijd}) → verschoven"
+                        )
+                        warnings.append(
+                            f"⚠️ Aankomsttijd {gewensttijd_begin} valt na uiterlijke plantijd "
+                            f"{monsternemer.uiterlijke_plantijd} → inplannen op {inplannen_op_str}"
+                        )
+                        gewensttijd_begin = "10:00"
+                        gewensttijd_eind = monsternemer.uiterlijke_tijd or "23:59"
         else:
-            # Niet zijn ophaaldag → eerstvolgende ophaaldag
             volgende, _ = eerstvolgende_ophaaldag(datum, ophaaldagen)
             inplannen_op_str = format_datum_nl(volgende)
             inplannen_toelichting = "Monsters van vandaag (geen ophaaldag)"
-            gewensttijd_begin = "10:00"
 
     return {
         "dagnaam": dagnaam,
@@ -186,7 +400,7 @@ def _verwerk_monsternemer(
         "telefoon": monsternemer.telefoon if monsternemer else None,
         "laatste_tijdvenster_plaats": laatste_tv.plaats if laatste_tv else None,
         "laatste_tijdvenster": (
-            f"{laatste_tv.begintijd} - {laatste_tv.eindtijd}" if laatste_tv else None
+            f"{laatste_tv.begintijd} - {effective_eindtijd}" if laatste_tv and effective_eindtijd else None
         ),
         "standaard_ophaaldagen": ophaaldagen,
         "huidige_dag_is_ophaaldag": huidige_dag_is_ophaaldag,

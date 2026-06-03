@@ -1,7 +1,6 @@
 """Datamodellen voor AP06 Planner."""
 
 from dataclasses import dataclass, field
-from datetime import date
 
 
 @dataclass
@@ -16,11 +15,15 @@ class Monsternemer:
     adres: str
     postcode: str
     woonplaats: str
+    land: str | None
     telefoon: str | None
     laadinstructie: str | None
     ophaaldagen: list[str]     # ["ma", "wo"] etc.
-    uiterlijke_tijd: str | None  # "21:30"
+    uiterlijke_tijd: str | None      # "21:30" — wens monsternemer (niet automatisch doorschuiven)
+    uiterlijke_plantijd: str | None  # "21:30" — planningtechnische grens (overschreden → doorschuiven)
     bijzonderheden: str | None
+    aantal_lege_bakken: int = 2
+    sjabloon: bool = False
     ophalen: bool = True       # False = brengt zelf naar lab
 
     @property

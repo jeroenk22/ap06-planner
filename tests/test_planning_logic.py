@@ -51,7 +51,7 @@ def _monsternemer(**kwargs) -> Monsternemer:
         ophalen=True,
     )
     defaults.update(kwargs)
-    return Monsternemer(**defaults)
+    return Monsternemer(**defaults) # type: ignore[arg-type]
 
 
 def _regel(
@@ -454,6 +454,60 @@ class TestVerwerkMonsternemer:
         assert result is not None
         assert "verschoven" in (result["inplannen_toelichting"] or "")
         assert "woensdag" in result["inplannen_op"]
+        assert result["gewensttijd"] == "10:00 - 21:30"  # default uiterlijke_tijd uit _monsternemer
+
+    def test_uiterlijke_plantijd_overschreden_zonder_uiterlijke_tijd(self):
+        """Bij verschuiven zonder uiterlijke_tijd wordt 23:59 als eindtijd gebruikt."""
+        m = _monsternemer(ophaaldagen=["ma"], uiterlijke_plantijd="18:00", uiterlijke_tijd=None)
+        maandag = date(2026, 6, 1)
+        woensdag = date(2026, 6, 3)
+        regels = [_regel()]
+
+        with patch("ap06_planner.pages.planning.zoek_monsternemer", return_value=m), \
+             patch("ap06_planner.pages.planning.match_monsternemer_naam", return_value=None), \
+             patch("ap06_planner.pages.planning.is_feestdag", return_value=False), \
+             patch("ap06_planner.pages.planning.eerstvolgende_ophaaldag",
+                   return_value=(woensdag, False)), \
+             patch("ap06_planner.pages.planning.bereken_aankomsttijd",
+                   return_value=("20:00", "21:30", "debug")):
+            result = _verwerk_monsternemer(
+                naam="Jan de Vries",
+                regels=regels,
+                datum=maandag,
+                dagnaam="maandag",
+                bekende_namen=[],
+                bekende_monsternemers=[],
+            )
+
+        assert result is not None
+        assert result["gewensttijd"] == "10:00 - 23:59"
+
+    def test_uiterlijke_plantijd_overschreden_met_uiterlijke_tijd(self):
+        """Bij verschuiven wordt uiterlijke_tijd van monsternemer gerespecteerd als eindtijd."""
+        m = _monsternemer(ophaaldagen=["ma"], uiterlijke_plantijd="18:00", uiterlijke_tijd="20:00")
+        maandag = date(2026, 6, 1)
+        woensdag = date(2026, 6, 3)
+        regels = [_regel()]
+
+        with patch("ap06_planner.pages.planning.zoek_monsternemer", return_value=m), \
+             patch("ap06_planner.pages.planning.match_monsternemer_naam", return_value=None), \
+             patch("ap06_planner.pages.planning.is_feestdag", return_value=False), \
+             patch("ap06_planner.pages.planning.eerstvolgende_ophaaldag",
+                   return_value=(woensdag, False)), \
+             patch("ap06_planner.pages.planning.bereken_aankomsttijd",
+                   return_value=("20:00", "21:30", "debug")):
+            result = _verwerk_monsternemer(
+                naam="Jan de Vries",
+                regels=regels,
+                datum=maandag,
+                dagnaam="maandag",
+                bekende_namen=[],
+                bekende_monsternemers=[],
+            )
+
+        assert result is not None
+        assert "verschoven" in (result["inplannen_toelichting"] or "")
+        assert result["gewensttijd"] == "10:00 - 20:00"
 
     def test_uiterlijke_tijd_conflict(self):
         """Als aankomsttijd > uiterlijke tijd (maar niet plantijd) → tijdconflict warning."""

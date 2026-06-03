@@ -13,8 +13,30 @@ LETOP: API-calls worden alleen gedaan als de reguliere parsers falen.
 
 import json
 import os
+import re
 
 import anthropic
+
+_MARKDOWN_CODE_BLOCK = re.compile(r"```(?:json)?\s*\n?(.*?)\n?```", re.DOTALL)
+_STRIP_LAD_LOS_NR = re.compile(r"\b(LAD|LOS)\d+\b", re.IGNORECASE)
+
+
+def _parse_json(tekst: str):
+    """Parse JSON uit Claude-output, ook bij markdown wrapping of extra tekst."""
+    tekst = tekst.strip()
+    if not tekst:
+        raise json.JSONDecodeError("Lege Claude-respons", "", 0)
+    # Haal JSON uit code block als aanwezig
+    m = _MARKDOWN_CODE_BLOCK.search(tekst)
+    if m:
+        tekst = m.group(1).strip()
+    # Zoek het eerste [ of { als er nog preamble-tekst voor staat
+    if tekst and tekst[0] not in ("[", "{", '"'):
+        for i, c in enumerate(tekst):
+            if c in ("[", "{"):
+                tekst = tekst[i:]
+                break
+    return json.loads(tekst)
 
 MODEL = "claude-sonnet-4-6"
 _client: anthropic.Anthropic | None = None
@@ -33,44 +55,167 @@ def _get_client() -> anthropic.Anthropic:
     return _client
 
 
-def analyseer_tijdvenster_met_claude(
-    tekst: str,
-    wijzigingen: str | None = None,
-) -> dict | None:
+_PLANNINGSREGEL_SYSTEM = """Je analyseert planningsregels uit een AP06 monstername-planning.
+Elke regel heeft een locatiestring en een optionele wijziging. Je retourneert het definitieve tijdvenster na toepassing van de wijziging.
+
+Je krijgt een JSON-array van objecten met "locatie" en "wijziging" (kan null zijn).
+Retourneer een JSON-array in exact dezelfde volgorde.
+
+Schema per item:
+{"plaats": "...", "begintijd": "HH:MM", "eindtijd": "HH:MM", "type": "LAD" | "LOS", "nummer": "..." | null, "overgeslagen": false}
+
+Stap 1 — extraheer uit de locatiestring:
+- "plaats" is ALTIJD de Nederlandse gemeente — nooit de bedrijfsnaam
+- Het tijdvenster staat ALTIJD als twee getallen gescheiden door een streepje in de locatiestring
+- Extraheer begintijd en eindtijd altijd rechtstreeks uit de locatiestring
+- "Bladel TonTrans 7-18 LAD17"    → plaats=Bladel, begintijd=07:00, eindtijd=18:00, type=LAD, nummer="17"
+- "Bemmel JB 15-17 LAD"           → plaats=Bemmel, begintijd=15:00, eindtijd=17:00, type=LAD, nummer=null
+- "Kerkwijk Spek 7.15-9.15 LAD"  → plaats=Kerkwijk, begintijd=07:15, eindtijd=09:15, type=LAD, nummer=null
+- "Zundert Dams 6-18 LAD1"        → plaats=Zundert, begintijd=06:00, eindtijd=18:00, type=LAD, nummer="1"
+- "Dams Zunder 6-18 LAD15"        → plaats=Zundert (Zunder=afkorting, Dams=bedrijf)
+- "Axel Alphen 16-18 LAD1"        → plaats=Axel
+- "Hazerswoude-Rijndijk hertog 7-9 LOS" → plaats=Hazerswoude-Rijndijk, type=LOS
+- Schrijf afgekorte plaatsnamen volledig: "Zunder"→"Zundert", "Heeswijk"→"Heeswijk-Dinther"
+- Tijdnotatie: "6"→"06:00", "7"→"07:00", "8.30"→"08:30", "7.15"→"07:15", "15.30"→"15:30"
+- type: "LAD" als LAD aanwezig, "LOS" als LOS aanwezig, anders "LAD"
+- nummer: getal direct na LAD/LOS als string, of null
+
+Stap 2 — pas wijziging toe op het tijdvenster uit stap 1:
+- "Naar 12-18" → vervang begintijd+eindtijd door "12:00" en "18:00"
+- "[naam] na 12" / "[naam] vanaf 12" → begintijd wordt "12:00" (eindtijd ongewijzigd)
+- "[naam] tot 12" → eindtijd wordt "12:00" (begintijd ongewijzigd)
+- "[naam] hele dag" → geen aanpassing aan tijden
+- "dagblok" / "ochtendblok" → overgeslagen: true
+- null of lege wijziging → geen aanpassing
+
+Antwoord ALLEEN met een JSON-array. Geen uitleg, geen markdown."""
+
+
+def verwerk_planningsregels_batch(
+    regels: list[dict],
+) -> tuple[list[dict] | None, str | None]:
     """
-    Gebruik Claude om een tijdvensterstring te analyseren die de reguliere parser
-    niet kon verwerken.
-
-    Returns:
-        Dict met: {plaats, begintijd, eindtijd, type} of None bij fout.
+    Verwerk een lijst van {locatie, wijziging} paren via Claude.
+    Dedupliceert op genormaliseerde locatie (LAD/LOS-nummers gestript) voor
+    betrouwbaarheid bij batches met veel gelijksoortige entries (bijv. LAD1..LAD44).
+    Retourneert resultaten in dezelfde volgorde als de invoer.
     """
-    prompt = f"""Analyseer deze planningsregel uit een AP06 monstername-planning.
-Extraheer: plaatsnaam, begintijd (HH:MM), eindtijd (HH:MM), type (LAD of LOS).
+    if not regels:
+        return [], None
 
-Tijdvensterstring: "{tekst}"
-{"Wijziging: " + wijzigingen if wijzigingen else ""}
+    # Dedupliceer: strip trailing LAD/LOS-nummers als batch-sleutel
+    def _norm(loc: str) -> str:
+        return _STRIP_LAD_LOS_NR.sub(lambda m: m.group(1).upper(), loc).strip()
 
-Antwoord ALLEEN in dit JSON-formaat (geen uitleg, geen markdown):
-{{"plaats": "...", "begintijd": "HH:MM", "eindtijd": "HH:MM", "type": "LAD"}}
+    sleutel_naar_idx: dict[tuple, int] = {}
+    uniq_regels: list[dict] = []
+    for r in regels:
+        sleutel = (_norm(r.get("locatie", "")), r.get("wijziging"))
+        if sleutel not in sleutel_naar_idx:
+            sleutel_naar_idx[sleutel] = len(uniq_regels)
+            uniq_regels.append({"locatie": r.get("locatie", ""), "wijziging": r.get("wijziging")})
+
+    # Verwerk unieke items in chunks van 10
+    CHUNK = 10
+    alle_uniq: list[dict] = []
+    tekst_blok = None
+    try:
+        client = _get_client()
+        for i in range(0, len(uniq_regels), CHUNK):
+            chunk = uniq_regels[i: i + CHUNK]
+            message = client.messages.create(
+                model=MODEL,
+                max_tokens=4096,
+                system=[{
+                    "type": "text",
+                    "text": _PLANNINGSREGEL_SYSTEM,
+                    "cache_control": {"type": "ephemeral"},
+                }],
+                messages=[{"role": "user", "content": json.dumps(chunk, ensure_ascii=False)}],
+            )
+            tekst_blok = next(b for b in message.content if b.type == "text")
+            chunk_resultaten = _parse_json(tekst_blok.text)
+            if len(chunk_resultaten) != len(chunk):
+                return None, (
+                    f"Claude retourneerde {len(chunk_resultaten)} resultaten "
+                    f"voor {len(chunk)} invoer-regels (chunk {i // CHUNK + 1})"
+                )
+            alle_uniq.extend(chunk_resultaten)
+
+        # Map terug naar originele volgorde
+        resultaten = []
+        for r in regels:
+            sleutel = (_norm(r.get("locatie", "")), r.get("wijziging"))
+            idx = sleutel_naar_idx[sleutel]
+            resultaten.append(alle_uniq[idx])
+        return resultaten, None
+
+    except json.JSONDecodeError as e:
+        preview = repr(tekst_blok.text[:300]) if tekst_blok else "geen tekst-blok"
+        return None, f"Claude JSON-fout: {e} — respons: {preview}"
+    except Exception as e:
+        return None, f"Claude API-fout: {e}"
+
+
+def analyseer_tijdvenster_met_claude(tekst: str) -> dict | None:
+    """Analyseer één locatiestring. Voor meerdere: gebruik verwerk_planningsregels_batch."""
+    resultaten, _ = verwerk_planningsregels_batch([{"locatie": tekst, "wijziging": None}])
+    if not resultaten:
+        return None
+    return resultaten[0]
+
+
+_WIJZIGINGEN_SYSTEM = """Je verwerkt cellen uit de 'wijzigingen' kolom van een AP06 monstername-planning.
+Je krijgt een JSON-array van teksten. Retourneer een JSON-array in exact dezelfde volgorde.
+
+Schema per item:
+{"tijdvervang": ["HH:MM","HH:MM"] | null, "start_na": "HH:MM" | null, "eind_voor": "HH:MM" | null, "hele_dag": false, "negeer": false}
 
 Regels:
-- "Bladel TonTrans 7-18 LAD17" → plaats=Bladel, begin=07:00, eind=18:00, type=LAD
-- "Naar 12-18" in wijziging → vervang tijdvenster door 12:00-18:00
-- "Heusden" → "Heusden (gem. Asten)" als plaatsnaam
-- Tijden als "8.30" → "08:30"
-"""
+- "Naar 12-18", "naar 6-8", "Naar 14-16" → tijdvervang bijv. ["14:00","16:00"]
+- "[naam] na 12", "[naam] vanaf 12", "[naam] va 12" → start_na: "12:00"
+- "[naam] tot 12" → eind_voor: "12:00"
+- "[naam] hele dag" → hele_dag: true
+- "dagblok", "ochtendblok" → negeer: true
+- Alleen een naam of onduidelijk → alles null/false
+- Tijden: "6"→"06:00", "8.30"→"08:30", "14"→"14:00", "12"→"12:00"
 
+Antwoord ALLEEN met een JSON-array. Geen uitleg, geen markdown."""
+
+
+def interpreteer_wijzigingen_batch(wijzigingen: list[str]) -> dict[str, dict] | None:
+    """
+    Verwerk een lijst wijzigingen in één API-call met prompt caching.
+    Returns dict mapping tekst → resultaat, of None bij API-fout.
+    """
+    uniek = list(dict.fromkeys(w for w in wijzigingen if w))
+    if not uniek:
+        return {}
     try:
         client = _get_client()
         message = client.messages.create(
             model=MODEL,
-            max_tokens=200,
-            messages=[{"role": "user", "content": prompt}],
+            max_tokens=512,
+            system=[{
+                "type": "text",
+                "text": _WIJZIGINGEN_SYSTEM,
+                "cache_control": {"type": "ephemeral"},
+            }],
+            messages=[{"role": "user", "content": json.dumps(uniek, ensure_ascii=False)}],
         )
-        tekst_resp = message.content[0].text.strip()
-        return json.loads(tekst_resp)
+        tekst_blok = next(b for b in message.content if b.type == "text")
+        resultaten = _parse_json(tekst_blok.text)
+        return {tekst: res for tekst, res in zip(uniek, resultaten)}
     except Exception:
         return None
+
+
+def interpreteer_wijzigingen(wijzigingen: str) -> dict | None:
+    """Verwerk één wijziging via Claude. Voor meerdere: gebruik interpreteer_wijzigingen_batch."""
+    resultaat = interpreteer_wijzigingen_batch([wijzigingen])
+    if resultaat is None:
+        return None
+    return resultaat.get(wijzigingen)
 
 
 def match_monsternemer_naam(
@@ -107,7 +252,8 @@ Regels:
             max_tokens=50,
             messages=[{"role": "user", "content": prompt}],
         )
-        resultaat = message.content[0].text.strip()
+        tekst_blok = next(b for b in message.content if b.type == "text")
+        resultaat = tekst_blok.text.strip()
         if resultaat == "GEEN" or resultaat not in bekende_namen:
             return None
         return resultaat

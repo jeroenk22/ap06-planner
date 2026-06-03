@@ -130,6 +130,13 @@ Multi-stap taken: stel kort een plan op:
 2. [Stap] → verify: [check]
 ```
 
+### 5. Tests na elke codewijziging
+Bij elke codewijziging altijd controleren:
+- Bestaande tests nog groen?
+- Moeten bestaande tests aangepast worden?
+- Zijn er tests die niet meer relevant zijn?
+- Zijn er nieuwe tests nodig?
+
 ---
 
 ## Security
