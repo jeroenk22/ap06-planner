@@ -71,7 +71,9 @@ def _geocodeer_nominatim(adres: str) -> tuple[float, float] | None:
         resultaten = resp.json()
         if resultaten:
             coords = (float(resultaten[0]["lon"]), float(resultaten[0]["lat"]))
-            print(f"[GEOCODE] Nominatim: '{adres}' → {coords} ({resultaten[0].get('display_name', '')[:60]})")
+            print(
+                f"[GEOCODE] Nominatim: '{adres}' → {coords} ({resultaten[0].get('display_name', '')[:60]})"
+            )
             _nominatim_cache[adres] = coords
             return coords
         print(f"[GEOCODE] Nominatim: '{adres}' → geen resultaat")
@@ -116,9 +118,7 @@ def _osrm_route(start_lon: float, start_lat: float, eind_lon: float, eind_lat: f
 
     for base in servers:
         url = (
-            f"{base}/route/v1/driving/"
-            f"{start_lon},{start_lat};{eind_lon},{eind_lat}"
-            f"?overview=false"
+            f"{base}/route/v1/driving/{start_lon},{start_lat};{eind_lon},{eind_lat}?overview=false"
         )
         try:
             resp = requests.get(url, timeout=15)
@@ -183,7 +183,9 @@ def bereken_aankomsttijd(
     """
     eindtijd_str = uiterlijke_tijd or "23:59"
 
-    print(f"\n[AANKOMSTTIJD] Berekening: '{vertrekplaats}' → '{woonplaats}' (postcode: '{woonplaats_postcode}')")
+    print(
+        f"\n[AANKOMSTTIJD] Berekening: '{vertrekplaats}' → '{woonplaats}' (postcode: '{woonplaats_postcode}')"
+    )
     print(f"[AANKOMSTTIJD] Eindtijdvenster: {eind_tijdvenster}, uiterlijke_tijd: {uiterlijke_tijd}")
 
     # Geocodeer bestemming (monsternemer thuis)

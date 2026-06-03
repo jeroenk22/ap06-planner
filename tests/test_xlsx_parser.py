@@ -20,9 +20,14 @@ def test_selecteer_kleine_letters():
 
 def test_tabblad_patroon_varianten():
     geldige_tabs = [
-        "13-4 Maandag", "11-5 maandag", "9-5 Zaterdag",
-        "20-4 Maandag", "18-4 Zaterdag", "10-4 Vrijdag",
-        "5-5 dinsdag", "20-5 Woensdag"
+        "13-4 Maandag",
+        "11-5 maandag",
+        "9-5 Zaterdag",
+        "20-4 Maandag",
+        "18-4 Zaterdag",
+        "10-4 Vrijdag",
+        "5-5 dinsdag",
+        "20-5 Woensdag",
     ]
     for tab in geldige_tabs:
         assert GELDIG_TABBLAD_PATROON.search(tab), f"Verwacht geldig: {tab}"

@@ -50,7 +50,9 @@ def initialiseer_db(db_path: Path = DB_DEFAULT) -> None:
         # Migratie: voeg kolommen toe als ze nog niet bestaan
         bestaande = {r[1] for r in conn.execute("PRAGMA table_info(monsternemers)")}
         if "aantal_lege_bakken" not in bestaande:
-            conn.execute("ALTER TABLE monsternemers ADD COLUMN aantal_lege_bakken INTEGER NOT NULL DEFAULT 2")
+            conn.execute(
+                "ALTER TABLE monsternemers ADD COLUMN aantal_lege_bakken INTEGER NOT NULL DEFAULT 2"
+            )
         if "sjabloon" not in bestaande:
             conn.execute("ALTER TABLE monsternemers ADD COLUMN sjabloon INTEGER NOT NULL DEFAULT 0")
         if "uiterlijke_plantijd" not in bestaande:
@@ -156,10 +158,24 @@ def update_monsternemer(m: Monsternemer, db_path: Path = DB_DEFAULT) -> bool:
                 WHERE id=?
                 """,
                 (
-                    m.code, m.voornaam, m.tussenvoegsel, m.achternaam, m.adres, m.postcode,
-                    m.woonplaats, m.land, m.telefoon, m.laadinstructie, ",".join(m.ophaaldagen),
-                    m.uiterlijke_tijd, m.uiterlijke_plantijd, m.bijzonderheden, m.aantal_lege_bakken,
-                    int(m.sjabloon), int(m.ophalen), m.id,
+                    m.code,
+                    m.voornaam,
+                    m.tussenvoegsel,
+                    m.achternaam,
+                    m.adres,
+                    m.postcode,
+                    m.woonplaats,
+                    m.land,
+                    m.telefoon,
+                    m.laadinstructie,
+                    ",".join(m.ophaaldagen),
+                    m.uiterlijke_tijd,
+                    m.uiterlijke_plantijd,
+                    m.bijzonderheden,
+                    m.aantal_lege_bakken,
+                    int(m.sjabloon),
+                    int(m.ophalen),
+                    m.id,
                 ),
             )
             conn.commit()
@@ -173,9 +189,7 @@ def verwijder_monsternemer(monsternemer_id: int, db_path: Path = DB_DEFAULT) -> 
     initialiseer_db(db_path)
     try:
         with _get_conn(db_path) as conn:
-            cursor = conn.execute(
-                "DELETE FROM monsternemers WHERE id = ?", (monsternemer_id,)
-            )
+            cursor = conn.execute("DELETE FROM monsternemers WHERE id = ?", (monsternemer_id,))
             conn.commit()
             return cursor.rowcount > 0
     except sqlite3.Error as e:

@@ -62,14 +62,17 @@ def render():
     alle_output: list[dict] = []
     tab_resultaten: list[dict] = []
 
-    st.markdown("""
+    st.markdown(
+        """
 <style>
 [data-testid="stStatusWidget"] [data-testid="stSpinnerIcon"] {
     animation: spin 0.8s linear infinite !important;
 }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 </style>
-""", unsafe_allow_html=True)
+""",
+        unsafe_allow_html=True,
+    )
 
     with st.status("Planning verwerken…", expanded=True) as status:
         for i, tab in enumerate(tabbladen, 1):
@@ -106,7 +109,9 @@ def render():
                     for invoer, uitvoer in zip(batch_input, batch_resultaten_lijst, strict=False):
                         claude_tv_cache[(invoer["locatie"], invoer["wijziging"])] = uitvoer
 
-            status.write(f"   ↳ Ophaaldata en reistijden bepalen voor {len(per_monsternemer)} monsternemers…")
+            status.write(
+                f"   ↳ Ophaaldata en reistijden bepalen voor {len(per_monsternemer)} monsternemers…"
+            )
             overgeslagen_namen: list[str] = []
             for naam, naam_regels in per_monsternemer.items():
                 output = _verwerk_monsternemer(
@@ -123,15 +128,17 @@ def render():
                 else:
                     overgeslagen_namen.append(naam)
 
-            tab_resultaten.append({
-                "datum_str": datum_str,
-                "dagnaam": dagnaam,
-                "regels": regels,
-                "per_monsternemer": per_monsternemer,
-                "kolommap": tab.get("kolommap", {}),
-                "batch_fout": batch_fout,
-                "overgeslagen_namen": overgeslagen_namen,
-            })
+            tab_resultaten.append(
+                {
+                    "datum_str": datum_str,
+                    "dagnaam": dagnaam,
+                    "regels": regels,
+                    "per_monsternemer": per_monsternemer,
+                    "kolommap": tab.get("kolommap", {}),
+                    "batch_fout": batch_fout,
+                    "overgeslagen_namen": overgeslagen_namen,
+                }
+            )
 
         status.update(
             label=f"✅ Verwerking klaar — {len(alle_output)} monsternemers",
@@ -151,7 +158,9 @@ def render():
             f"{len(per_monsternemer)} unieke monsternemers"
         )
         if res["batch_fout"]:
-            st.warning(f"⚠️ Claude batch-verwerking mislukt: {res['batch_fout']} — regex-fallback actief")
+            st.warning(
+                f"⚠️ Claude batch-verwerking mislukt: {res['batch_fout']} — regex-fallback actief"
+            )
         with st.expander("🔧 Debug: gedetecteerde kolommen", expanded=False):
             st.json(res["kolommap"])
         if res["overgeslagen_namen"]:
@@ -159,7 +168,9 @@ def render():
                 f"⏭️ Overgeslagen ({len(res['overgeslagen_namen'])}) — geen geldige ophaaldagen",
                 expanded=True,
             ):
-                st.caption("Deze monsternemers staan in het xlsx maar hebben geen geldige ophaaldagen in de database.")
+                st.caption(
+                    "Deze monsternemers staan in het xlsx maar hebben geen geldige ophaaldagen in de database."
+                )
                 for n in res["overgeslagen_namen"]:
                     st.write(f"- {n}")
 
@@ -224,13 +235,14 @@ def render():
         st.json(alle_output)
 
 
-
 def _haversine_km(lon1: float, lat1: float, lon2: float, lat2: float) -> float:
     r = 6371
     dlat = math.radians(lat2 - lat1)
     dlon = math.radians(lon2 - lon1)
-    a = (math.sin(dlat / 2) ** 2
-         + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2)
+    a = (
+        math.sin(dlat / 2) ** 2
+        + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2
+    )
     return r * 2 * math.asin(math.sqrt(a))
 
 
@@ -370,7 +382,10 @@ def _verwerk_monsternemer(
                 if not wijziging.negeer:
                     tv_voor = f"{tv.begintijd}-{tv.eindtijd}"
                     tv = pas_wijziging_toe(tv, wijziging)
-                    if tv.begintijd != tv_voor.split("-")[0] or tv.eindtijd != tv_voor.split("-")[1]:
+                    if (
+                        tv.begintijd != tv_voor.split("-")[0]
+                        or tv.eindtijd != tv_voor.split("-")[1]
+                    ):
                         warnings.append(
                             f"Tijdvenster aangepast door '{r.wijzigingen}': "
                             f"{tv_voor} → {tv.begintijd}-{tv.eindtijd} ({tv.plaats})"
@@ -407,7 +422,9 @@ def _verwerk_monsternemer(
     woonplaats_m = monsternemer.woonplaats if monsternemer else None
     postcode_m = monsternemer.postcode if monsternemer else None
     laatste_tv, tie_warnings = _kies_laatste_tv(
-        tijdvensters, woonplaats_m, postcode_m,
+        tijdvensters,
+        woonplaats_m,
+        postcode_m,
         bereken_tiebreak=huidige_dag_is_ophaaldag,
     )
     warnings.extend(tie_warnings)
@@ -416,9 +433,7 @@ def _verwerk_monsternemer(
     effective_eindtijd: str | None = None
     if laatste_tv:
         effective_eindtijd = (
-            min(min_eind_cap, laatste_tv.eindtijd)
-            if min_eind_cap
-            else laatste_tv.eindtijd
+            min(min_eind_cap, laatste_tv.eindtijd) if min_eind_cap else laatste_tv.eindtijd
         )
 
     # Inplanning
@@ -448,7 +463,10 @@ def _verwerk_monsternemer(
                     warnings.append(f"Reistijd: {reistijd_debug}")
 
                     # Onmogelijk venster: aankomsttijd valt na uiterlijke_tijd
-                    if monsternemer.uiterlijke_tijd and gewensttijd_begin > monsternemer.uiterlijke_tijd:
+                    if (
+                        monsternemer.uiterlijke_tijd
+                        and gewensttijd_begin > monsternemer.uiterlijke_tijd
+                    ):
                         warnings.append(
                             f"⚠️ Aankomsttijd {gewensttijd_begin} valt na uiterlijke tijd "
                             f"{monsternemer.uiterlijke_tijd} — tijdconflict"
@@ -456,8 +474,13 @@ def _verwerk_monsternemer(
                         gewensttijd_eind = "23:59"
 
                     # Planningtechnisch te laat? → verschuif naar volgende ophaaldag
-                    if monsternemer.uiterlijke_plantijd and gewensttijd_begin > monsternemer.uiterlijke_plantijd:
-                        volgende, _ = eerstvolgende_ophaaldag(datum + timedelta(days=1), ophaaldagen)
+                    if (
+                        monsternemer.uiterlijke_plantijd
+                        and gewensttijd_begin > monsternemer.uiterlijke_plantijd
+                    ):
+                        volgende, _ = eerstvolgende_ophaaldag(
+                            datum + timedelta(days=1), ophaaldagen
+                        )
                         inplannen_op_str = format_datum_nl(volgende)
                         inplannen_toelichting = (
                             f"Te laat thuis ({gewensttijd_begin} > uiterlijke plantijd "
@@ -484,7 +507,9 @@ def _verwerk_monsternemer(
         "telefoon": monsternemer.telefoon if monsternemer else None,
         "laatste_tijdvenster_plaats": laatste_tv.plaats if laatste_tv else None,
         "laatste_tijdvenster": (
-            f"{laatste_tv.begintijd} - {effective_eindtijd}" if laatste_tv and effective_eindtijd else None
+            f"{laatste_tv.begintijd} - {effective_eindtijd}"
+            if laatste_tv and effective_eindtijd
+            else None
         ),
         "standaard_ophaaldagen": ophaaldagen,
         "huidige_dag_is_ophaaldag": huidige_dag_is_ophaaldag,

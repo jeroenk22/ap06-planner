@@ -111,17 +111,20 @@ class TestVoegMonsternemerrToe:
 
     def test_velden_bewaard(self, tmp_path):
         db = tmp_path / "test.db"
-        voeg_monsternemer_toe(_m(
-            voornaam="Marie",
-            achternaam="Pietersen",
-            adres="Dorpsstraat 5",
-            postcode="5678XY",
-            woonplaats="Eindhoven",
-            telefoon="0698765432",
-            laadinstructie="Bel eerst aan",
-            bijzonderheden="Hond aanwezig",
-            aantal_lege_bakken=3,
-        ), db)
+        voeg_monsternemer_toe(
+            _m(
+                voornaam="Marie",
+                achternaam="Pietersen",
+                adres="Dorpsstraat 5",
+                postcode="5678XY",
+                woonplaats="Eindhoven",
+                telefoon="0698765432",
+                laadinstructie="Bel eerst aan",
+                bijzonderheden="Hond aanwezig",
+                aantal_lege_bakken=3,
+            ),
+            db,
+        )
         m = haal_alle_monsternemers(db)[0]
         assert m.voornaam == "Marie"
         assert m.adres == "Dorpsstraat 5"

@@ -80,9 +80,7 @@ def eerstvolgende_ophaaldag(
                 # Feestdag! Zoek verder naar de VOLGENDE ophaaldag
                 kandidaat += timedelta(days=1)
                 continue
-            kandidaat != vanaf and is_feestdag(
-                date.fromordinal(kandidaat.toordinal() - 1)
-            )
+            kandidaat != vanaf and is_feestdag(date.fromordinal(kandidaat.toordinal() - 1))
             return kandidaat, False  # Vereenvoudigd — geef volledige logica later
 
         kandidaat += timedelta(days=1)

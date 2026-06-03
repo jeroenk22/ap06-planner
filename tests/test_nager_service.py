@@ -24,10 +24,14 @@ def leeg_cache():
 def _mock_feestdag_response(data: list[dict]):
     """Helper: mock requests.get die feestdagdata retourneert."""
 
-    return type("R", (), {
-        "raise_for_status": lambda self: None,
-        "json": lambda self: data,
-    })()
+    return type(
+        "R",
+        (),
+        {
+            "raise_for_status": lambda self: None,
+            "json": lambda self: data,
+        },
+    )()
 
 
 class TestHaalFeestdagen:
