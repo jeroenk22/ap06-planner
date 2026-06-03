@@ -6,17 +6,15 @@ from io import BytesIO
 import pytest
 from openpyxl import Workbook
 
-from ap06_planner.models.schemas import PlanningRegel
 from ap06_planner.parsers.xlsx_parser import (
     _cel,
     _datum_uit_tabnaam,
     _locatie_tekst,
-    detecteer_datum,
     detecteer_dagnaam,
+    detecteer_datum,
     detecteer_headers,
     is_eurofins_formaat,
     lees_planningsbestand,
-    selecteer_tabbladen,
 )
 
 

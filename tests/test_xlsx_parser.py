@@ -1,7 +1,6 @@
 """Tests voor xlsx-parser."""
 
-import pytest
-from ap06_planner.parsers.xlsx_parser import selecteer_tabbladen, GELDIG_TABBLAD_PATROON
+from ap06_planner.parsers.xlsx_parser import GELDIG_TABBLAD_PATROON, selecteer_tabbladen
 
 
 def test_selecteer_geldige_tabbladen():

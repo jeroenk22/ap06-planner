@@ -79,6 +79,7 @@ data/
 ## Conventies
 - Branch strategie: main (protected) → develop → feature/xxx, fix/xxx, chore/xxx
 - Commits: Conventional Commits (feat:, fix:, chore:, docs:, test:)
+- Geen `Co-Authored-By: Claude ...` regel in commit messages
 - PR: nooit direct naar main, altijd via PR met passing tests
 - Package manager: pip + venv
 

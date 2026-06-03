@@ -1,7 +1,8 @@
 """Tests voor date_utils."""
 
-import pytest
 from datetime import date
+
+import pytest
 
 from ap06_planner.utils.date_utils import (
     DAGAFKORTINGEN,

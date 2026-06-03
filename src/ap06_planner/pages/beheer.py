@@ -55,7 +55,7 @@ def render():
     actief = st.session_state["_beheer_tab"]
 
     cols = st.columns(len(_TABS))
-    for col, label in zip(cols, _TABS):
+    for col, label in zip(cols, _TABS, strict=False):
         with col:
             if label == actief:
                 st.markdown(

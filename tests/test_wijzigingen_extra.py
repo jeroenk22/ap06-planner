@@ -1,6 +1,5 @@
 """Aanvullende tests voor wijzigingen-parser en tijdvenster-vergelijking."""
 
-import pytest
 
 from ap06_planner.models.schemas import Tijdvenster
 from ap06_planner.parsers.tijdvenster import vergelijk_tijdvensters
@@ -14,15 +13,15 @@ from ap06_planner.parsers.wijzigingen import (
 
 
 def _maak_tv(**kwargs) -> Tijdvenster:
-    defaults = dict(
-        plaats="Bladel",
-        klant_naam="TonTrans",
-        begintijd="07:00",
-        eindtijd="18:00",
-        type="LAD",
-        nummer="17",
-        origineel="Bladel TonTrans 7-18 LAD17",
-    )
+    defaults = {
+        "plaats": "Bladel",
+        "klant_naam": "TonTrans",
+        "begintijd": "07:00",
+        "eindtijd": "18:00",
+        "type": "LAD",
+        "nummer": "17",
+        "origineel": "Bladel TonTrans 7-18 LAD17",
+    }
     defaults.update(kwargs)
     return Tijdvenster(**defaults)
 

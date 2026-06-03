@@ -1,7 +1,6 @@
 """Tests voor tijdvenster parser."""
 
-import pytest
-from ap06_planner.parsers.tijdvenster import parse_tijdvenster, normaliseer_tijd
+from ap06_planner.parsers.tijdvenster import normaliseer_tijd, parse_tijdvenster
 
 
 def test_normaliseer_hele_uren():

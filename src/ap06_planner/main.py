@@ -12,6 +12,7 @@ import streamlit as st
 
 # Laad .env
 from dotenv import load_dotenv
+
 load_dotenv()
 
 st.set_page_config(

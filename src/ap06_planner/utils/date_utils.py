@@ -1,6 +1,6 @@
 """date_utils.py — Datum helpers voor ophaalplanning."""
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 
 DAGAFKORTINGEN = {
     "ma": 0, "di": 1, "wo": 2, "do": 3,
