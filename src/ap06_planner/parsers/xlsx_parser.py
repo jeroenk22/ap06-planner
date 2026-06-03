@@ -144,6 +144,7 @@ def lees_planningsbestand(
         if header_rij is None:
             continue
 
+        assert kolommap is not None
         eurofins = is_eurofins_formaat(kolommap)
         datum = detecteer_datum(ws, eurofins_formaat=eurofins) or _datum_uit_tabnaam(tab_naam)
         dagnaam = detecteer_dagnaam(ws)
@@ -186,7 +187,7 @@ def _detecteer_tijdvenster_kolom(ws, header_rij: int, skip_kolommen: set[int]) -
                 continue
             if cel and isinstance(cel, str) and _TIJDPATROON.search(cel):
                 scores[idx] = scores.get(idx, 0) + 1
-    return max(scores, key=scores.get) if scores else None
+    return max(scores, key=lambda k: scores[k]) if scores else None
 
 
 def _verwerk_rijen(

@@ -139,6 +139,7 @@ def voeg_monsternemer_toe(m: Monsternemer, db_path: Path = DB_DEFAULT) -> int:
                 ),
             )
             conn.commit()
+            assert cursor.lastrowid is not None
             return cursor.lastrowid
     except sqlite3.Error as e:
         raise RuntimeError(f"Database fout bij opslaan monsternemer: {e}") from e

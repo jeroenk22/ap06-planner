@@ -73,15 +73,15 @@ def eerstvolgende_ophaaldag(
 
     kandidaat = vanaf
     max_iter = 30  # bescherming tegen oneindige lus
+    feestdag_omzeild = False
 
     for _ in range(max_iter):
         if kandidaat.weekday() in dagnummers:
             if sla_feestdagen_over and is_feestdag(kandidaat):
-                # Feestdag! Zoek verder naar de VOLGENDE ophaaldag
+                feestdag_omzeild = True
                 kandidaat += timedelta(days=1)
                 continue
-            kandidaat != vanaf and is_feestdag(date.fromordinal(kandidaat.toordinal() - 1))
-            return kandidaat, False  # Vereenvoudigd — geef volledige logica later
+            return kandidaat, feestdag_omzeild
 
         kandidaat += timedelta(days=1)
 
