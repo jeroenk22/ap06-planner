@@ -1,15 +1,25 @@
 """date_utils.py — Datum helpers voor ophaalplanning."""
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 
 DAGAFKORTINGEN = {
-    "ma": 0, "di": 1, "wo": 2, "do": 3,
-    "vr": 4, "za": 5, "zo": 6,
+    "ma": 0,
+    "di": 1,
+    "wo": 2,
+    "do": 3,
+    "vr": 4,
+    "za": 5,
+    "zo": 6,
 }
 
 DAGNAMEN_NL = {
-    0: "maandag", 1: "dinsdag", 2: "woensdag", 3: "donderdag",
-    4: "vrijdag", 5: "zaterdag", 6: "zondag",
+    0: "maandag",
+    1: "dinsdag",
+    2: "woensdag",
+    3: "donderdag",
+    4: "vrijdag",
+    5: "zaterdag",
+    6: "zondag",
 }
 
 

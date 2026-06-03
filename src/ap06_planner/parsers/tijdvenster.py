@@ -17,9 +17,7 @@ import re
 from ap06_planner.models.schemas import Tijdvenster
 
 # Patroon: "7-18", "8.30-10.30", "11.30-13.30", "5.30-7.30"
-TIJDVENSTER_PATROON = re.compile(
-    r"(\d+(?:[.,]\d+)?)\s*-\s*(\d+(?:[.,]\d+)?)"
-)
+TIJDVENSTER_PATROON = re.compile(r"(\d+(?:[.,]\d+)?)\s*-\s*(\d+(?:[.,]\d+)?)")
 
 # Type: LAD of LOS, optioneel gevolgd door een nummer
 TYPE_PATROON = re.compile(r"\b(LAD|LOS)(\d+(?:\.\d+)?)?\b")

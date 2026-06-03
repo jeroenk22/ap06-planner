@@ -38,6 +38,7 @@ def _parse_json(tekst: str):
                 break
     return json.loads(tekst)
 
+
 MODEL = "claude-sonnet-4-6"
 _client: anthropic.Anthropic | None = None
 
@@ -47,10 +48,7 @@ def _get_client() -> anthropic.Anthropic:
     if _client is None:
         api_key = os.getenv("ANTHROPIC_API_KEY")
         if not api_key:
-            raise ValueError(
-                "ANTHROPIC_API_KEY niet gevonden. "
-                "Voeg toe aan .env bestand."
-            )
+            raise ValueError("ANTHROPIC_API_KEY niet gevonden. Voeg toe aan .env bestand.")
         _client = anthropic.Anthropic(api_key=api_key)
     return _client
 
@@ -116,21 +114,23 @@ def verwerk_planningsregels_batch(
             uniq_regels.append({"locatie": r.get("locatie", ""), "wijziging": r.get("wijziging")})
 
     # Verwerk unieke items in chunks van 10
-    CHUNK = 10
+    chunk_size = 10
     alle_uniq: list[dict] = []
     tekst_blok = None
     try:
         client = _get_client()
-        for i in range(0, len(uniq_regels), CHUNK):
-            chunk = uniq_regels[i: i + CHUNK]
+        for i in range(0, len(uniq_regels), chunk_size):
+            chunk = uniq_regels[i : i + chunk_size]
             message = client.messages.create(
                 model=MODEL,
                 max_tokens=4096,
-                system=[{
-                    "type": "text",
-                    "text": _PLANNINGSREGEL_SYSTEM,
-                    "cache_control": {"type": "ephemeral"},
-                }],
+                system=[
+                    {
+                        "type": "text",
+                        "text": _PLANNINGSREGEL_SYSTEM,
+                        "cache_control": {"type": "ephemeral"},
+                    }
+                ],
                 messages=[{"role": "user", "content": json.dumps(chunk, ensure_ascii=False)}],
             )
             tekst_blok = next(b for b in message.content if b.type == "text")
@@ -138,7 +138,7 @@ def verwerk_planningsregels_batch(
             if len(chunk_resultaten) != len(chunk):
                 return None, (
                     f"Claude retourneerde {len(chunk_resultaten)} resultaten "
-                    f"voor {len(chunk)} invoer-regels (chunk {i // CHUNK + 1})"
+                    f"voor {len(chunk)} invoer-regels (chunk {i // chunk_size + 1})"
                 )
             alle_uniq.extend(chunk_resultaten)
 
@@ -196,16 +196,18 @@ def interpreteer_wijzigingen_batch(wijzigingen: list[str]) -> dict[str, dict] | 
         message = client.messages.create(
             model=MODEL,
             max_tokens=512,
-            system=[{
-                "type": "text",
-                "text": _WIJZIGINGEN_SYSTEM,
-                "cache_control": {"type": "ephemeral"},
-            }],
+            system=[
+                {
+                    "type": "text",
+                    "text": _WIJZIGINGEN_SYSTEM,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
             messages=[{"role": "user", "content": json.dumps(uniek, ensure_ascii=False)}],
         )
         tekst_blok = next(b for b in message.content if b.type == "text")
         resultaten = _parse_json(tekst_blok.text)
-        return {tekst: res for tekst, res in zip(uniek, resultaten)}
+        return dict(zip(uniek, resultaten, strict=False))
     except Exception:
         return None
 

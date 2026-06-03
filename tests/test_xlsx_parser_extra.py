@@ -6,17 +6,15 @@ from io import BytesIO
 import pytest
 from openpyxl import Workbook
 
-from ap06_planner.models.schemas import PlanningRegel
 from ap06_planner.parsers.xlsx_parser import (
     _cel,
     _datum_uit_tabnaam,
     _locatie_tekst,
-    detecteer_datum,
     detecteer_dagnaam,
+    detecteer_datum,
     detecteer_headers,
     is_eurofins_formaat,
     lees_planningsbestand,
-    selecteer_tabbladen,
 )
 
 
@@ -30,10 +28,10 @@ def _maak_workbook_bytes(tab_naam="13-4 Maandag", met_data=True) -> BytesIO:
     ws.cell(row=1, column=3, value=datetime(2026, 4, 13))
 
     # Rij 3: headers (standaard formaat)
-    ws.cell(row=3, column=2, value="Monsternemer")   # B
-    ws.cell(row=3, column=4, value="Wijzigingen")    # D
-    ws.cell(row=3, column=5, value="Locatie")        # E
-    ws.cell(row=3, column=6, value="Klant")          # F
+    ws.cell(row=3, column=2, value="Monsternemer")  # B
+    ws.cell(row=3, column=4, value="Wijzigingen")  # D
+    ws.cell(row=3, column=5, value="Locatie")  # E
+    ws.cell(row=3, column=6, value="Klant")  # F
 
     if met_data:
         # Rij 4: dataregel

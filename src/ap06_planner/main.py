@@ -12,6 +12,7 @@ import streamlit as st
 
 # Laad .env
 from dotenv import load_dotenv
+
 load_dotenv()
 
 st.set_page_config(
@@ -33,7 +34,9 @@ pagina = st.sidebar.radio(
 
 if pagina == "📋 Planning":
     from ap06_planner.pages import planning
+
     planning.render()
 elif pagina == "👥 Monsternemer beheer":
     from ap06_planner.pages import beheer
+
     beheer.render()

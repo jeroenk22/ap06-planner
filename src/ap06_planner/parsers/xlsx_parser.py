@@ -82,8 +82,13 @@ def detecteer_dagnaam(ws) -> str | None:
     for row in ws.iter_rows(min_row=1, max_row=1, values_only=True):
         for cel in row:
             if isinstance(cel, str) and cel.lower() in {
-                "maandag", "dinsdag", "woensdag", "donderdag",
-                "vrijdag", "zaterdag", "zondag"
+                "maandag",
+                "dinsdag",
+                "woensdag",
+                "donderdag",
+                "vrijdag",
+                "zaterdag",
+                "zondag",
             }:
                 return cel.lower()
     return None
@@ -95,9 +100,7 @@ def detecteer_headers(ws) -> tuple[int, dict[str, int]] | tuple[None, None]:
     Ondersteunt zowel standaard- als Eurofins Agro-formaat.
     """
     for rij_nr, row in enumerate(ws.iter_rows(min_row=1, max_row=5, values_only=True), 1):
-        row_lower = [
-            str(v).strip().lower() if v is not None else "" for v in row
-        ]
+        row_lower = [str(v).strip().lower() if v is not None else "" for v in row]
         if "monsternemer" in row_lower:
             kolommap = {}
             for idx, header in enumerate(row_lower):
@@ -153,13 +156,15 @@ def lees_planningsbestand(
 
         regels = _verwerk_rijen(ws, header_rij, kolommap, eurofins)
 
-        resultaten.append({
-            "tabblad": tab_naam,
-            "datum": datum,
-            "dagnaam": dagnaam,
-            "regels": regels,
-            "kolommap": dict(kolommap),
-        })
+        resultaten.append(
+            {
+                "tabblad": tab_naam,
+                "datum": datum,
+                "dagnaam": dagnaam,
+                "regels": regels,
+                "kolommap": dict(kolommap),
+            }
+        )
 
     wb.close()
     return resultaten
@@ -212,31 +217,37 @@ def _verwerk_rijen(
 
         wijzigingen = _cel(row, idx_wijzigingen)
         tv_tekst = _cel(row, idx_tijdvenster) if idx_tijdvenster is not None else None
-        loc_naam = _cel(row, idx_locatie_naam) if (
-            idx_locatie_naam is not None and idx_locatie_naam != idx_tijdvenster
-        ) else None
+        loc_naam = (
+            _cel(row, idx_locatie_naam)
+            if (idx_locatie_naam is not None and idx_locatie_naam != idx_tijdvenster)
+            else None
+        )
 
         locatie_raw = _locatie_tekst(loc_naam, tv_tekst)
         klant_raw = None
 
         # Skip bij "vervallen" / "intrekken" / "ingetrokken"
         if wijzigingen and SKIP_WIJZIGINGEN.search(wijzigingen):
-            regels.append(PlanningRegel(
+            regels.append(
+                PlanningRegel(
+                    monsternemer_naam=monsternemer_naam,
+                    wijzigingen=wijzigingen,
+                    locatie_raw=locatie_raw,
+                    klant_raw=klant_raw,
+                    overgeslagen=True,
+                    reden_overgeslagen=f"wijzigingen: '{wijzigingen}'",
+                )
+            )
+            continue
+
+        regels.append(
+            PlanningRegel(
                 monsternemer_naam=monsternemer_naam,
                 wijzigingen=wijzigingen,
                 locatie_raw=locatie_raw,
                 klant_raw=klant_raw,
-                overgeslagen=True,
-                reden_overgeslagen=f"wijzigingen: '{wijzigingen}'",
-            ))
-            continue
-
-        regels.append(PlanningRegel(
-            monsternemer_naam=monsternemer_naam,
-            wijzigingen=wijzigingen,
-            locatie_raw=locatie_raw,
-            klant_raw=klant_raw,
-        ))
+            )
+        )
 
     return regels
 

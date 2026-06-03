@@ -44,17 +44,17 @@ class TestParseJson:
         assert result == {"key": "value"}
 
     def test_markdown_code_block(self):
-        tekst = "```json\n[{\"a\": 1}]\n```"
+        tekst = '```json\n[{"a": 1}]\n```'
         result = _parse_json(tekst)
         assert result == [{"a": 1}]
 
     def test_markdown_zonder_taal(self):
-        tekst = "```\n[{\"a\": 2}]\n```"
+        tekst = '```\n[{"a": 2}]\n```'
         result = _parse_json(tekst)
         assert result == [{"a": 2}]
 
     def test_preamble_tekst_voor_json(self):
-        tekst = "Hier is de output:\n[{\"x\": 5}]"
+        tekst = 'Hier is de output:\n[{"x": 5}]'
         result = _parse_json(tekst)
         assert result == [{"x": 5}]
 
@@ -75,14 +75,15 @@ class TestParseJson:
 class TestGetClient:
     def test_zonder_api_key_raises(self):
         cs._client = None
-        with patch("os.getenv", return_value=None):
-            with pytest.raises(ValueError, match="ANTHROPIC_API_KEY"):
-                _get_client()
+        with (
+            patch("os.getenv", return_value=None),
+            pytest.raises(ValueError, match="ANTHROPIC_API_KEY"),
+        ):
+            _get_client()
 
     def test_met_api_key(self):
         cs._client = None
-        with patch("os.getenv", return_value="test-key"), \
-             patch("anthropic.Anthropic") as mock_cls:
+        with patch("os.getenv", return_value="test-key"), patch("anthropic.Anthropic") as mock_cls:
             mock_cls.return_value = MagicMock()
             client = _get_client()
         assert client is not None
@@ -103,10 +104,18 @@ class TestVerwerkPlanningsregelsBatch:
 
     def test_succes(self):
         invoer = [{"locatie": "Bladel TonTrans 7-18 LAD17", "wijziging": None}]
-        response = json.dumps([{
-            "plaats": "Bladel", "begintijd": "07:00", "eindtijd": "18:00",
-            "type": "LAD", "nummer": "17", "overgeslagen": False,
-        }])
+        response = json.dumps(
+            [
+                {
+                    "plaats": "Bladel",
+                    "begintijd": "07:00",
+                    "eindtijd": "18:00",
+                    "type": "LAD",
+                    "nummer": "17",
+                    "overgeslagen": False,
+                }
+            ]
+        )
         fake_client = _maak_client(response)
         with patch.object(cs, "_get_client", return_value=fake_client):
             resultaten, fout = verwerk_planningsregels_batch(invoer)
@@ -120,10 +129,18 @@ class TestVerwerkPlanningsregelsBatch:
             {"locatie": "Bladel TonTrans 7-18 LAD1", "wijziging": None},
             {"locatie": "Bladel TonTrans 7-18 LAD2", "wijziging": None},
         ]
-        response = json.dumps([{
-            "plaats": "Bladel", "begintijd": "07:00", "eindtijd": "18:00",
-            "type": "LAD", "nummer": None, "overgeslagen": False,
-        }])
+        response = json.dumps(
+            [
+                {
+                    "plaats": "Bladel",
+                    "begintijd": "07:00",
+                    "eindtijd": "18:00",
+                    "type": "LAD",
+                    "nummer": None,
+                    "overgeslagen": False,
+                }
+            ]
+        )
         fake_client = _maak_client(response)
         with patch.object(cs, "_get_client", return_value=fake_client):
             resultaten, fout = verwerk_planningsregels_batch(invoer)
@@ -160,8 +177,14 @@ class TestVerwerkPlanningsregelsBatch:
     def test_chunking_meer_dan_10(self):
         """Batches >10 items worden in chunks van 10 verwerkt."""
         invoer = [{"locatie": f"Stad{i} 7-18 LAD{i}", "wijziging": None} for i in range(15)]
-        item = {"plaats": "Stad", "begintijd": "07:00", "eindtijd": "18:00",
-                "type": "LAD", "nummer": None, "overgeslagen": False}
+        item = {
+            "plaats": "Stad",
+            "begintijd": "07:00",
+            "eindtijd": "18:00",
+            "type": "LAD",
+            "nummer": None,
+            "overgeslagen": False,
+        }
 
         call_count = {"n": 0}
 
@@ -181,10 +204,18 @@ class TestVerwerkPlanningsregelsBatch:
 
 class TestAnalyseerTijdvensterMetClaude:
     def test_succes(self):
-        response = json.dumps([{
-            "plaats": "Bladel", "begintijd": "07:00", "eindtijd": "18:00",
-            "type": "LAD", "nummer": "17", "overgeslagen": False,
-        }])
+        response = json.dumps(
+            [
+                {
+                    "plaats": "Bladel",
+                    "begintijd": "07:00",
+                    "eindtijd": "18:00",
+                    "type": "LAD",
+                    "nummer": "17",
+                    "overgeslagen": False,
+                }
+            ]
+        )
         fake_client = _maak_client(response)
         with patch.object(cs, "_get_client", return_value=fake_client):
             result = analyseer_tijdvenster_met_claude("Bladel TonTrans 7-18 LAD17")
@@ -207,10 +238,17 @@ class TestInterpreteerWijzigingenBatch:
         assert result == {}
 
     def test_succes(self):
-        response = json.dumps([
-            {"tijdvervang": ["12:00", "18:00"], "start_na": None,
-             "eind_voor": None, "hele_dag": False, "negeer": False}
-        ])
+        response = json.dumps(
+            [
+                {
+                    "tijdvervang": ["12:00", "18:00"],
+                    "start_na": None,
+                    "eind_voor": None,
+                    "hele_dag": False,
+                    "negeer": False,
+                }
+            ]
+        )
         fake_client = _maak_client(response)
         with patch.object(cs, "_get_client", return_value=fake_client):
             result = interpreteer_wijzigingen_batch(["Naar 12-18"])
@@ -224,10 +262,17 @@ class TestInterpreteerWijzigingenBatch:
 
     def test_deduplicatie(self):
         """Duplicaten worden slechts eenmaal naar API gestuurd."""
-        response = json.dumps([
-            {"tijdvervang": None, "start_na": "12:00", "eind_voor": None,
-             "hele_dag": False, "negeer": False}
-        ])
+        response = json.dumps(
+            [
+                {
+                    "tijdvervang": None,
+                    "start_na": "12:00",
+                    "eind_voor": None,
+                    "hele_dag": False,
+                    "negeer": False,
+                }
+            ]
+        )
         fake_client = _maak_client(response)
         with patch.object(cs, "_get_client", return_value=fake_client):
             result = interpreteer_wijzigingen_batch(["Anouk na 12", "Anouk na 12"])

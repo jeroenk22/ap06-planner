@@ -1,7 +1,5 @@
 """Aanvullende tests voor wijzigingen-parser en tijdvenster-vergelijking."""
 
-import pytest
-
 from ap06_planner.models.schemas import Tijdvenster
 from ap06_planner.parsers.tijdvenster import vergelijk_tijdvensters
 from ap06_planner.parsers.wijzigingen import (
@@ -14,15 +12,15 @@ from ap06_planner.parsers.wijzigingen import (
 
 
 def _maak_tv(**kwargs) -> Tijdvenster:
-    defaults = dict(
-        plaats="Bladel",
-        klant_naam="TonTrans",
-        begintijd="07:00",
-        eindtijd="18:00",
-        type="LAD",
-        nummer="17",
-        origineel="Bladel TonTrans 7-18 LAD17",
-    )
+    defaults = {
+        "plaats": "Bladel",
+        "klant_naam": "TonTrans",
+        "begintijd": "07:00",
+        "eindtijd": "18:00",
+        "type": "LAD",
+        "nummer": "17",
+        "origineel": "Bladel TonTrans 7-18 LAD17",
+    }
     defaults.update(kwargs)
     return Tijdvenster(**defaults)
 
@@ -33,6 +31,7 @@ class TestNormaliseerTijdEnParseTijdvenster:
     def test_parse_tijdvenster_begint_met_tijdvenster(self):
         """Als er niets voor het tijdvenster staat → lege plaats en klant_naam."""
         from ap06_planner.parsers.tijdvenster import parse_tijdvenster
+
         tv = parse_tijdvenster("7-18 LAD")
         assert tv is not None
         assert tv.plaats == ""
@@ -42,6 +41,7 @@ class TestNormaliseerTijdEnParseTijdvenster:
     def test_parse_tijdvenster_een_woord_voor(self):
         """Eén woord voor tijdvenster → alleen plaats, lege klant_naam."""
         from ap06_planner.parsers.tijdvenster import parse_tijdvenster
+
         tv = parse_tijdvenster("Bladel 7-18 LAD")
         assert tv is not None
         assert tv.plaats == "Bladel"

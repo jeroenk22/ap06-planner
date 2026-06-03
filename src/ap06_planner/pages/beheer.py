@@ -43,9 +43,7 @@ def _nav(tab: str) -> None:
 
 def render():
     st.title("Monsternemer beheer")
-    st.caption(
-        "Deze data bevat persoonsgegevens. De database is lokaal en staat niet in de repo."
-    )
+    st.caption("Deze data bevat persoonsgegevens. De database is lokaal en staat niet in de repo.")
 
     initialiseer_db()
 
@@ -55,7 +53,7 @@ def render():
     actief = st.session_state["_beheer_tab"]
 
     cols = st.columns(len(_TABS))
-    for col, label in zip(cols, _TABS):
+    for col, label in zip(cols, _TABS, strict=False):
         with col:
             if label == actief:
                 st.markdown(
@@ -105,8 +103,12 @@ def _render_overzicht_tabel(monsternemers: list) -> None:
         use_container_width=True,
         hide_index=True,
         column_config={
-            "Uiterlijke tijd": st.column_config.TextColumn("Uiterlijke tijd", help=_UITERLIJKE_TIJD_HELP),
-            "Uiterlijke plantijd": st.column_config.TextColumn("Uiterlijke plantijd", help=_UITERLIJKE_PLANTIJD_HELP),
+            "Uiterlijke tijd": st.column_config.TextColumn(
+                "Uiterlijke tijd", help=_UITERLIJKE_TIJD_HELP
+            ),
+            "Uiterlijke plantijd": st.column_config.TextColumn(
+                "Uiterlijke plantijd", help=_UITERLIJKE_PLANTIJD_HELP
+            ),
         },
     )
 
@@ -138,20 +140,34 @@ def _monsternemer_form(prefix: str, m: Monsternemer | None = None) -> dict:
     """Render het formulier en retourneer de ingevulde waarden als dict."""
     col1, col2, col3 = st.columns(3)
     with col1:
-        voornaam = st.text_input("Voornaam *", value=m.voornaam if m else "", key=f"{prefix}_voornaam")
+        voornaam = st.text_input(
+            "Voornaam *", value=m.voornaam if m else "", key=f"{prefix}_voornaam"
+        )
     with col2:
-        tussenvoegsel = st.text_input("Tussenvoegsel", value=m.tussenvoegsel or "" if m else "", key=f"{prefix}_tussenvoegsel")
+        tussenvoegsel = st.text_input(
+            "Tussenvoegsel", value=m.tussenvoegsel or "" if m else "", key=f"{prefix}_tussenvoegsel"
+        )
     with col3:
-        achternaam = st.text_input("Achternaam *", value=m.achternaam if m else "", key=f"{prefix}_achternaam")
+        achternaam = st.text_input(
+            "Achternaam *", value=m.achternaam if m else "", key=f"{prefix}_achternaam"
+        )
 
     col4, col5 = st.columns(2)
     with col4:
-        adres = st.text_input("Adres (straat + huisnummer)", value=m.adres or "" if m else "", key=f"{prefix}_adres")
-        postcode = st.text_input("Postcode", value=m.postcode or "" if m else "", key=f"{prefix}_postcode")
+        adres = st.text_input(
+            "Adres (straat + huisnummer)", value=m.adres or "" if m else "", key=f"{prefix}_adres"
+        )
+        postcode = st.text_input(
+            "Postcode", value=m.postcode or "" if m else "", key=f"{prefix}_postcode"
+        )
     with col5:
-        woonplaats = st.text_input("Woonplaats", value=m.woonplaats or "" if m else "", key=f"{prefix}_woonplaats")
+        woonplaats = st.text_input(
+            "Woonplaats", value=m.woonplaats or "" if m else "", key=f"{prefix}_woonplaats"
+        )
         land = st.text_input("Land", value=m.land or "" if m else "Nederland", key=f"{prefix}_land")
-    telefoon = st.text_input("Telefoonnummer", value=m.telefoon or "" if m else "", key=f"{prefix}_telefoon")
+    telefoon = st.text_input(
+        "Telefoonnummer", value=m.telefoon or "" if m else "", key=f"{prefix}_telefoon"
+    )
 
     ophaaldagen_opties = ["ma", "di", "wo", "do", "vr", "za", "zo"]
     ophaaldagen = st.multiselect(
@@ -161,7 +177,11 @@ def _monsternemer_form(prefix: str, m: Monsternemer | None = None) -> dict:
         key=f"{prefix}_ophaaldagen",
     )
 
-    laadinstructie = st.text_area("Laadinstructie chauffeur", value=m.laadinstructie or "" if m else "", key=f"{prefix}_laadinstructie")
+    laadinstructie = st.text_area(
+        "Laadinstructie chauffeur",
+        value=m.laadinstructie or "" if m else "",
+        key=f"{prefix}_laadinstructie",
+    )
 
     col_ut, col_upt = st.columns(2)
     with col_ut:
@@ -197,7 +217,9 @@ def _monsternemer_form(prefix: str, m: Monsternemer | None = None) -> dict:
             key=f"{prefix}_bakken",
         )
     with col7:
-        sjabloon = st.checkbox("Sjabloon aanwezig", value=m.sjabloon if m else False, key=f"{prefix}_sjabloon")
+        sjabloon = st.checkbox(
+            "Sjabloon aanwezig", value=m.sjabloon if m else False, key=f"{prefix}_sjabloon"
+        )
 
     ophalen = st.checkbox("Wij halen op", value=m.ophalen if m else True, key=f"{prefix}_ophalen")
 
@@ -254,7 +276,9 @@ def _render_toevoegen():
     if submitted:
         ophaaldagen_ok = not data["ophalen"] or bool(data["ophaaldagen"])
         if not data["voornaam"] or not data["achternaam"] or not ophaaldagen_ok:
-            st.error("Vul minstens voornaam en achternaam in. Ophaaldagen zijn verplicht als wij ophalen.")
+            st.error(
+                "Vul minstens voornaam en achternaam in. Ophaaldagen zijn verplicht als wij ophalen."
+            )
             return
         m = _dict_naar_monsternemer(data)
         nieuw_id = voeg_monsternemer_toe(m)
@@ -312,7 +336,9 @@ def _render_bewerken():
     if submitted:
         ophaaldagen_ok = not data["ophalen"] or bool(data["ophaaldagen"])
         if not data["voornaam"] or not data["achternaam"] or not ophaaldagen_ok:
-            st.error("Vul minstens voornaam en achternaam in. Ophaaldagen zijn verplicht als wij ophalen.")
+            st.error(
+                "Vul minstens voornaam en achternaam in. Ophaaldagen zijn verplicht als wij ophalen."
+            )
             return
         gewijzigd = _dict_naar_monsternemer(data, bestaande=m)
         if not _heeft_wijzigingen(gewijzigd, m):
@@ -380,21 +406,33 @@ def _render_import():
             continue
 
         m = Monsternemer(
-            id=None, code=code,
-            voornaam=voornaam, tussenvoegsel=tussenvoegsel or None,
-            achternaam=achternaam, adres=adres, postcode=postcode,
-            woonplaats=woonplaats, land=land, telefoon=telefoon,
-            laadinstructie=laadinstructie, ophaaldagen=ophaaldagen,
-            uiterlijke_tijd=uiterlijke_tijd, uiterlijke_plantijd=None,
-            bijzonderheden=bijzonderheden, aantal_lege_bakken=aantal_lege_bakken,
-            sjabloon=sjabloon, ophalen=True,
+            id=None,
+            code=code,
+            voornaam=voornaam,
+            tussenvoegsel=tussenvoegsel or None,
+            achternaam=achternaam,
+            adres=adres,
+            postcode=postcode,
+            woonplaats=woonplaats,
+            land=land,
+            telefoon=telefoon,
+            laadinstructie=laadinstructie,
+            ophaaldagen=ophaaldagen,
+            uiterlijke_tijd=uiterlijke_tijd,
+            uiterlijke_plantijd=None,
+            bijzonderheden=bijzonderheden,
+            aantal_lege_bakken=aantal_lege_bakken,
+            sjabloon=sjabloon,
+            ophalen=True,
         )
         monsternemers_te_importeren.append(m)
-        preview_data.append({
-            "Naam": m.volledige_naam,
-            "Woonplaats": woonplaats,
-            "Ophaaldagen": ophaaldagen_str,
-        })
+        preview_data.append(
+            {
+                "Naam": m.volledige_naam,
+                "Woonplaats": woonplaats,
+                "Ophaaldagen": ophaaldagen_str,
+            }
+        )
 
     wb.close()
 

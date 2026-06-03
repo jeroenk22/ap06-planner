@@ -1,9 +1,6 @@
 """Tests voor db_service — SQLite CRUD met tijdelijke database."""
 
 import sqlite3
-from pathlib import Path
-
-import pytest
 
 from ap06_planner.models.schemas import Monsternemer
 from ap06_planner.services.db_service import (
@@ -18,26 +15,26 @@ from ap06_planner.services.db_service import (
 
 def _m(**kwargs) -> Monsternemer:
     """Hulpfunctie: maak een test-monsternemer met defaults."""
-    defaults = dict(
-        id=None,
-        code="AP06",
-        voornaam="Jan",
-        tussenvoegsel=None,
-        achternaam="de Vries",
-        adres="Straat 1",
-        postcode="1234AB",
-        woonplaats="Amsterdam",
-        land="Nederland",
-        telefoon="0612345678",
-        laadinstructie=None,
-        ophaaldagen=["ma", "wo"],
-        uiterlijke_tijd="21:30",
-        uiterlijke_plantijd="20:00",
-        bijzonderheden=None,
-        aantal_lege_bakken=2,
-        sjabloon=False,
-        ophalen=True,
-    )
+    defaults = {
+        "id": None,
+        "code": "AP06",
+        "voornaam": "Jan",
+        "tussenvoegsel": None,
+        "achternaam": "de Vries",
+        "adres": "Straat 1",
+        "postcode": "1234AB",
+        "woonplaats": "Amsterdam",
+        "land": "Nederland",
+        "telefoon": "0612345678",
+        "laadinstructie": None,
+        "ophaaldagen": ["ma", "wo"],
+        "uiterlijke_tijd": "21:30",
+        "uiterlijke_plantijd": "20:00",
+        "bijzonderheden": None,
+        "aantal_lege_bakken": 2,
+        "sjabloon": False,
+        "ophalen": True,
+    }
     defaults.update(kwargs)
     return Monsternemer(**defaults)  # type: ignore[arg-type]
 
@@ -114,17 +111,20 @@ class TestVoegMonsternemerrToe:
 
     def test_velden_bewaard(self, tmp_path):
         db = tmp_path / "test.db"
-        voeg_monsternemer_toe(_m(
-            voornaam="Marie",
-            achternaam="Pietersen",
-            adres="Dorpsstraat 5",
-            postcode="5678XY",
-            woonplaats="Eindhoven",
-            telefoon="0698765432",
-            laadinstructie="Bel eerst aan",
-            bijzonderheden="Hond aanwezig",
-            aantal_lege_bakken=3,
-        ), db)
+        voeg_monsternemer_toe(
+            _m(
+                voornaam="Marie",
+                achternaam="Pietersen",
+                adres="Dorpsstraat 5",
+                postcode="5678XY",
+                woonplaats="Eindhoven",
+                telefoon="0698765432",
+                laadinstructie="Bel eerst aan",
+                bijzonderheden="Hond aanwezig",
+                aantal_lege_bakken=3,
+            ),
+            db,
+        )
         m = haal_alle_monsternemers(db)[0]
         assert m.voornaam == "Marie"
         assert m.adres == "Dorpsstraat 5"
@@ -186,7 +186,6 @@ class TestZoekMonsternemer:
 class TestSafeRowEnMigratie:
     def test_safe_row_ontbrekende_kolom(self, tmp_path):
         """_safe_row retourneert None als kolom niet bestaat (IndexError pad)."""
-        import sqlite3
         from ap06_planner.services.db_service import _safe_row
 
         # Maak een row zonder 'land' kolom via een echte query
@@ -202,7 +201,6 @@ class TestSafeRowEnMigratie:
 
     def test_safe_row_bestaande_kolom(self, tmp_path):
         """_safe_row retourneert de waarde als kolom bestaat."""
-        import sqlite3
         from ap06_planner.services.db_service import _safe_row
 
         conn = sqlite3.connect(":memory:")

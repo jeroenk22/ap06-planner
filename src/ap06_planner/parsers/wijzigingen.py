@@ -55,7 +55,7 @@ class WijzigingenResultaat:
 
     def __init__(self):
         self.tijdvervang: tuple[str, str] | None = None  # (begin, eind)
-        self.persoon_start_na: str | None = None   # "12:00"
+        self.persoon_start_na: str | None = None  # "12:00"
         self.persoon_eind_voor: str | None = None  # "12:00"
         self.persoon_hele_dag: bool = False
         self.negeer: bool = False
@@ -81,9 +81,8 @@ def verwerk_wijzigingen(
 
     w = wijzigingen.strip()
 
-    # Snel pad: negeer dagblok/ochtendblok zonder API-call
+    # Snel pad: dagblok/ochtendblok → negeer de wijziging, niet de regel
     if NEGEER_PATROON.search(w):
-        resultaat.negeer = True
         return resultaat
 
     # Claude-first: gebruik pre-computed cache of directe call
@@ -92,6 +91,7 @@ def verwerk_wijzigingen(
         claude_data = claude_cache.get(w)
     else:
         from ap06_planner.services.claude_service import interpreteer_wijzigingen
+
         claude_data = interpreteer_wijzigingen(w)
 
     if claude_data:
