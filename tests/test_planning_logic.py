@@ -103,6 +103,7 @@ class TestKiesLaatsteTv:
         tv1 = _tv(plaats="A", eindtijd="12:00")
         tv2 = _tv(plaats="B", eindtijd="18:00")
         result, _ = _kies_laatste_tv([tv1, tv2], None, None)
+        assert result is not None
         assert result.plaats == "B"
 
     def test_gelijke_eindtijd_geen_woonplaats(self):
@@ -144,6 +145,7 @@ class TestKiesLaatsteTv:
             result, warnings = _kies_laatste_tv(
                 [tv1, tv2], "Amsterdam", "1234AB", bereken_tiebreak=True
             )
+        assert result is not None
         assert result.plaats == "Ver"
 
     def test_geen_tiebreak_geeft_eerste(self):
@@ -152,6 +154,7 @@ class TestKiesLaatsteTv:
         result, warnings = _kies_laatste_tv(
             [tv1, tv2], "Amsterdam", "1234AB", bereken_tiebreak=False
         )
+        assert result is not None
         assert result.plaats == "A"
         assert warnings == []
 
@@ -173,6 +176,7 @@ class TestKiesLaatsteTv:
             result, warnings = _kies_laatste_tv(
                 [tv1, tv2], "Amsterdam", "1234AB", bereken_tiebreak=True
             )
+        assert result is not None
         assert result.plaats == "A"  # Fallback: eerste kandidaat
 
 

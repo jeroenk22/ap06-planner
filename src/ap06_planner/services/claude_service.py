@@ -183,7 +183,7 @@ Regels:
 Antwoord ALLEEN met een JSON-array. Geen uitleg, geen markdown."""
 
 
-def interpreteer_wijzigingen_batch(wijzigingen: list[str]) -> dict[str, dict] | None:
+def interpreteer_wijzigingen_batch(wijzigingen: list[str | None]) -> dict[str, dict] | None:
     """
     Verwerk een lijst wijzigingen in één API-call met prompt caching.
     Returns dict mapping tekst → resultaat, of None bij API-fout.

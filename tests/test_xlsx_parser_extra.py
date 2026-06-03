@@ -5,6 +5,7 @@ from io import BytesIO
 
 import pytest
 from openpyxl import Workbook
+from openpyxl.worksheet.worksheet import Worksheet
 
 from ap06_planner.parsers.xlsx_parser import (
     _cel,
@@ -18,10 +19,16 @@ from ap06_planner.parsers.xlsx_parser import (
 )
 
 
+def _actief(wb: Workbook) -> Worksheet:
+    ws = wb.active
+    assert ws is not None
+    return ws
+
+
 def _maak_workbook_bytes(tab_naam="13-4 Maandag", met_data=True) -> BytesIO:
     """Maak een minimaal geldig AP06 planningsbestand in-memory."""
     wb = Workbook()
-    ws = wb.active
+    ws = _actief(wb)
     ws.title = tab_naam
 
     # Rij 1: datum in kolom C (index 2, kolom C)
@@ -52,7 +59,7 @@ def _maak_workbook_bytes(tab_naam="13-4 Maandag", met_data=True) -> BytesIO:
 def _maak_eurofins_bytes() -> BytesIO:
     """Maak een Eurofins Agro formaat planningsbestand."""
     wb = Workbook()
-    ws = wb.active
+    ws = _actief(wb)
     ws.title = "13-4 Maandag"
 
     # Datum in kolom B (Eurofins formaat, index 1)
@@ -158,21 +165,21 @@ class TestDatumUitTabnaam:
 class TestDetecteerDatum:
     def test_standaard_formaat(self):
         wb = Workbook()
-        ws = wb.active
+        ws = _actief(wb)
         ws.cell(row=1, column=3, value=datetime(2026, 4, 13))
         result = detecteer_datum(ws, eurofins_formaat=False)
         assert result == "13-04-2026"
 
     def test_eurofins_formaat(self):
         wb = Workbook()
-        ws = wb.active
+        ws = _actief(wb)
         ws.cell(row=1, column=2, value=datetime(2026, 4, 13))
         result = detecteer_datum(ws, eurofins_formaat=True)
         assert result == "13-04-2026"
 
     def test_geen_datum_geeft_none(self):
         wb = Workbook()
-        ws = wb.active
+        ws = _actief(wb)
         ws.cell(row=1, column=3, value="geen datum")
         result = detecteer_datum(ws, eurofins_formaat=False)
         assert result is None
@@ -181,19 +188,19 @@ class TestDetecteerDatum:
 class TestDetecteerDagnaam:
     def test_vindt_maandag(self):
         wb = Workbook()
-        ws = wb.active
+        ws = _actief(wb)
         ws.cell(row=1, column=1, value="maandag")
         assert detecteer_dagnaam(ws) == "maandag"
 
     def test_vindt_case_insensitive(self):
         wb = Workbook()
-        ws = wb.active
+        ws = _actief(wb)
         ws.cell(row=1, column=1, value="Vrijdag")
         assert detecteer_dagnaam(ws) == "vrijdag"
 
     def test_geen_dagnaam(self):
         wb = Workbook()
-        ws = wb.active
+        ws = _actief(wb)
         ws.cell(row=1, column=1, value="Niet een dag")
         assert detecteer_dagnaam(ws) is None
 
@@ -201,17 +208,18 @@ class TestDetecteerDagnaam:
 class TestDetecteerHeaders:
     def test_vindt_headers_op_rij_3(self):
         wb = Workbook()
-        ws = wb.active
+        ws = _actief(wb)
         ws.cell(row=3, column=2, value="Monsternemer")
         ws.cell(row=3, column=4, value="Wijzigingen")
         rij_nr, kolommap = detecteer_headers(ws)
         assert rij_nr == 3
+        assert kolommap is not None
         assert "monsternemer" in kolommap
         assert "wijzigingen" in kolommap
 
     def test_geen_headers(self):
         wb = Workbook()
-        ws = wb.active
+        ws = _actief(wb)
         ws.cell(row=1, column=1, value="Iets anders")
         rij_nr, kolommap = detecteer_headers(ws)
         assert rij_nr is None
@@ -219,11 +227,12 @@ class TestDetecteerHeaders:
 
     def test_eurofins_headers_op_rij_2(self):
         wb = Workbook()
-        ws = wb.active
+        ws = _actief(wb)
         ws.cell(row=2, column=1, value="Monsternemer")
         ws.cell(row=2, column=2, value="Laadlocatie")
         rij_nr, kolommap = detecteer_headers(ws)
         assert rij_nr == 2
+        assert kolommap is not None
         assert "laadlocatie" in kolommap
 
 
@@ -253,7 +262,7 @@ class TestLeesPlanningsbestand:
 
     def test_geen_geldige_tabs_gebruikt_eerste(self):
         wb = Workbook()
-        ws = wb.active
+        ws = _actief(wb)
         ws.title = "Overzicht"  # Geen datum-dagnaam patroon
         ws.cell(row=3, column=2, value="Monsternemer")
         ws.cell(row=4, column=2, value="Test Persoon")
@@ -270,7 +279,7 @@ class TestLeesPlanningsbestand:
 
     def test_tab_zonder_headers_overgeslagen(self):
         wb = Workbook()
-        ws = wb.active
+        ws = _actief(wb)
         ws.title = "13-4 Maandag"
         ws.cell(row=1, column=1, value="Geen header hier")
         buf = BytesIO()
@@ -282,7 +291,7 @@ class TestLeesPlanningsbestand:
 
     def test_meerdere_tabs(self):
         wb = Workbook()
-        ws1 = wb.active
+        ws1 = _actief(wb)
         ws1.title = "13-4 Maandag"
         ws1.cell(row=3, column=2, value="Monsternemer")
         ws1.cell(row=4, column=2, value="Jan de Vries")
@@ -303,7 +312,7 @@ class TestLeesPlanningsbestand:
 
     def test_lege_rijen_overgeslagen(self):
         wb = Workbook()
-        ws = wb.active
+        ws = _actief(wb)
         ws.title = "13-4 Maandag"
         ws.cell(row=3, column=2, value="Monsternemer")
         ws.cell(row=3, column=5, value="Locatie")
@@ -326,7 +335,7 @@ class TestLeesPlanningsbestand:
 
     def test_dagnaam_uit_tabnaam(self):
         wb = Workbook()
-        ws = wb.active
+        ws = _actief(wb)
         ws.title = "13-4 Vrijdag"
         ws.cell(row=3, column=2, value="Monsternemer")
         buf = BytesIO()

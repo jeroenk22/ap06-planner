@@ -152,7 +152,9 @@ class TestGeocodeer:
             patch.object(osrm, "_geocodeer_google", return_value=(5.0, 51.0)),
             patch.object(osrm, "_geocodeer_nominatim") as mock_nom,
         ):
-            bron, coords = _geocodeer("Bladel")
+            result = _geocodeer("Bladel")
+        assert result is not None
+        bron, coords = result
         assert bron == "Google Maps"
         assert coords == (5.0, 51.0)
         mock_nom.assert_not_called()
@@ -162,7 +164,9 @@ class TestGeocodeer:
             patch.object(osrm, "_geocodeer_google", return_value=None),
             patch.object(osrm, "_geocodeer_nominatim", return_value=(5.1, 51.1)),
         ):
-            bron, coords = _geocodeer("Bladel")
+            result = _geocodeer("Bladel")
+        assert result is not None
+        bron, coords = result
         assert bron == "Nominatim"
 
     def test_koppelteken_fallback_via_google(self):

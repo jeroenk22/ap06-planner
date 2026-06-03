@@ -120,6 +120,7 @@ class TestVerwerkPlanningsregelsBatch:
         with patch.object(cs, "_get_client", return_value=fake_client):
             resultaten, fout = verwerk_planningsregels_batch(invoer)
         assert fout is None
+        assert resultaten is not None
         assert len(resultaten) == 1
         assert resultaten[0]["plaats"] == "Bladel"
 
@@ -145,6 +146,7 @@ class TestVerwerkPlanningsregelsBatch:
         with patch.object(cs, "_get_client", return_value=fake_client):
             resultaten, fout = verwerk_planningsregels_batch(invoer)
         assert fout is None
+        assert resultaten is not None
         assert len(resultaten) == 2
         assert fake_client.messages.create.call_count == 1  # Eén API-call
 
@@ -155,6 +157,7 @@ class TestVerwerkPlanningsregelsBatch:
         with patch.object(cs, "_get_client", return_value=fake_client):
             resultaten, fout = verwerk_planningsregels_batch(invoer)
         assert resultaten is None
+        assert fout is not None
         assert "resultaten" in fout
 
     def test_json_fout(self):
@@ -164,6 +167,7 @@ class TestVerwerkPlanningsregelsBatch:
                 [{"locatie": "Bladel 7-18 LAD", "wijziging": None}]
             )
         assert resultaten is None
+        assert fout is not None
         assert "JSON-fout" in fout
 
     def test_api_fout(self):
@@ -198,6 +202,7 @@ class TestVerwerkPlanningsregelsBatch:
         with patch.object(cs, "_get_client", return_value=fake_client):
             resultaten, fout = verwerk_planningsregels_batch(invoer)
         assert fout is None
+        assert resultaten is not None
         assert len(resultaten) == 15
         assert call_count["n"] == 2  # 15 unieke items → 2 chunks (10+5)
 

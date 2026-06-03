@@ -372,6 +372,7 @@ def _render_import():
     bytes_data = BytesIO(uploaded.read())
     wb = load_workbook(bytes_data, data_only=True)
     ws = wb.active
+    assert ws is not None
 
     preview_data = []
     monsternemers_te_importeren = []

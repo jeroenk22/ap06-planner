@@ -55,12 +55,14 @@ class TestVergelijkTijdvensters:
     def test_een_element(self):
         tv = _maak_tv(begintijd="07:00")
         result = vergelijk_tijdvensters([tv])
+        assert result is not None
         assert result.begintijd == "07:00"
 
     def test_hoogste_begintijd_wint(self):
         tv1 = _maak_tv(begintijd="07:00", eindtijd="10:00")
         tv2 = _maak_tv(begintijd="14:00", eindtijd="16:00", plaats="Zundert")
         result = vergelijk_tijdvensters([tv1, tv2])
+        assert result is not None
         assert result.plaats == "Zundert"
 
     def test_gelijke_begintijden(self):

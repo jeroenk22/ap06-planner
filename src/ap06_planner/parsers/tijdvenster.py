@@ -35,7 +35,7 @@ def normaliseer_tijd(tijdstr: str) -> str:
     return f"{int(tijdstr):02d}:00"
 
 
-def parse_tijdvenster(tekst: str) -> Tijdvenster | None:
+def parse_tijdvenster(tekst: str | None) -> Tijdvenster | None:
     """
     Parseer een tijdvensterstring naar een Tijdvenster object.
     Geeft None terug als er geen tijdvenster gevonden wordt.
