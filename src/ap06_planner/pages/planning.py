@@ -58,70 +58,104 @@ def render():
     bekende_namen = [m.volledige_naam for m in bekende_monsternemers]
 
     alle_output: list[dict] = []
+    tab_resultaten: list[dict] = []
 
-    for tab in tabbladen:
-        datum_str = tab.get("datum")
-        dagnaam = tab.get("dagnaam", "onbekend")
-        regels = tab.get("regels", [])
+    st.markdown("""
+<style>
+[data-testid="stStatusWidget"] [data-testid="stSpinnerIcon"] {
+    animation: spin 0.8s linear infinite !important;
+}
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+</style>
+""", unsafe_allow_html=True)
 
-        datum = parse_datum(datum_str) if datum_str else None
+    with st.status("Planning verwerken…", expanded=True) as status:
+        for i, tab in enumerate(tabbladen, 1):
+            datum_str = tab.get("datum")
+            dagnaam = tab.get("dagnaam", "onbekend")
+            regels = tab.get("regels", [])
+            datum = parse_datum(datum_str) if datum_str else None
 
-        st.subheader(f"📅 {dagnaam.capitalize()} {datum_str or '??'} — {tab['tabblad']}")
+            per_monsternemer: dict[str, list] = {}
+            for r in regels:
+                if not r.overgeslagen:
+                    per_monsternemer.setdefault(r.monsternemer_naam, []).append(r)
 
-        # Groepeer regels per monsternemer
-        per_monsternemer: dict[str, list] = {}
-        for r in regels:
-            if not r.overgeslagen:
-                per_monsternemer.setdefault(r.monsternemer_naam, []).append(r)
+            status.write(
+                f"📅 Tabblad {i}/{len(tabbladen)}: "
+                f"{dagnaam.capitalize()} {datum_str or '??'} "
+                f"— {len(per_monsternemer)} monsternemers"
+            )
 
+            batch_input = [
+                {"locatie": r.locatie_raw or r.klant_raw or "", "wijziging": r.wijzigingen}
+                for r in regels
+                if not r.overgeslagen and (r.locatie_raw or r.klant_raw)
+            ]
+            claude_tv_cache: dict[tuple, dict] = {}
+            batch_fout = None
+            if batch_input:
+                status.write(f"   ↳ AI analyseert {len(batch_input)} locaties…")
+                batch_resultaten_lijst, batch_fout = verwerk_planningsregels_batch(batch_input)
+                if not batch_fout and batch_resultaten_lijst:
+                    for invoer, uitvoer in zip(batch_input, batch_resultaten_lijst):
+                        claude_tv_cache[(invoer["locatie"], invoer["wijziging"])] = uitvoer
+
+            status.write(f"   ↳ Ophaaldata en reistijden bepalen voor {len(per_monsternemer)} monsternemers…")
+            overgeslagen_namen: list[str] = []
+            for naam, naam_regels in per_monsternemer.items():
+                output = _verwerk_monsternemer(
+                    naam=naam,
+                    regels=naam_regels,
+                    datum=datum,
+                    dagnaam=dagnaam,
+                    bekende_namen=bekende_namen,
+                    bekende_monsternemers=bekende_monsternemers,
+                    claude_tv_cache=claude_tv_cache,
+                )
+                if output is not None:
+                    alle_output.append(output)
+                else:
+                    overgeslagen_namen.append(naam)
+
+            tab_resultaten.append({
+                "datum_str": datum_str,
+                "dagnaam": dagnaam,
+                "regels": regels,
+                "per_monsternemer": per_monsternemer,
+                "kolommap": tab.get("kolommap", {}),
+                "batch_fout": batch_fout,
+                "overgeslagen_namen": overgeslagen_namen,
+            })
+
+        status.update(
+            label=f"✅ Verwerking klaar — {len(alle_output)} monsternemers",
+            state="complete",
+            expanded=False,
+        )
+
+    for res in tab_resultaten:
+        datum_str = res["datum_str"]
+        dagnaam = res["dagnaam"]
+        regels = res["regels"]
+        per_monsternemer = res["per_monsternemer"]
+
+        st.subheader(f"📅 {dagnaam.capitalize()} {datum_str or '??'}")
         st.caption(
             f"{len(regels)} regels, {sum(r.overgeslagen for r in regels)} overgeslagen, "
             f"{len(per_monsternemer)} unieke monsternemers"
         )
-
-        kolommap = tab.get("kolommap", {})
+        if res["batch_fout"]:
+            st.warning(f"⚠️ Claude batch-verwerking mislukt: {res['batch_fout']} — regex-fallback actief")
         with st.expander("🔧 Debug: gedetecteerde kolommen", expanded=False):
-            st.json(kolommap)
-
-        # Batch-verwerking: alle locatie+wijziging paren in één Claude-call
-        batch_input = [
-            {
-                "locatie": r.locatie_raw or r.klant_raw or "",
-                "wijziging": r.wijzigingen,
-            }
-            for r in regels
-            if not r.overgeslagen and (r.locatie_raw or r.klant_raw)
-        ]
-        claude_tv_cache: dict[tuple, dict] = {}
-        if batch_input:
-            batch_resultaten_lijst, batch_fout = verwerk_planningsregels_batch(batch_input)
-            if batch_fout:
-                st.warning(f"⚠️ Claude batch-verwerking mislukt: {batch_fout} — regex-fallback actief")
-            elif batch_resultaten_lijst:
-                for invoer, uitvoer in zip(batch_input, batch_resultaten_lijst):
-                    sleutel = (invoer["locatie"], invoer["wijziging"])
-                    claude_tv_cache[sleutel] = uitvoer
-
-        overgeslagen_namen: list[str] = []
-        for naam, naam_regels in per_monsternemer.items():
-            output = _verwerk_monsternemer(
-                naam=naam,
-                regels=naam_regels,
-                datum=datum,
-                dagnaam=dagnaam,
-                bekende_namen=bekende_namen,
-                bekende_monsternemers=bekende_monsternemers,
-                claude_tv_cache=claude_tv_cache,
-            )
-            if output is not None:
-                alle_output.append(output)
-            else:
-                overgeslagen_namen.append(naam)
-
-        if overgeslagen_namen:
-            with st.expander(f"⏭️ Overgeslagen ({len(overgeslagen_namen)}) — geen geldige ophaaldagen", expanded=True):
+            st.json(res["kolommap"])
+        if res["overgeslagen_namen"]:
+            with st.expander(
+                f"⏭️ Overgeslagen ({len(res['overgeslagen_namen'])}) — geen geldige ophaaldagen",
+                expanded=True,
+            ):
                 st.caption("Deze monsternemers staan in het xlsx maar hebben geen geldige ophaaldagen in de database.")
-                for n in overgeslagen_namen:
+                for n in res["overgeslagen_namen"]:
                     st.write(f"- {n}")
 
     # Toon JSON output
