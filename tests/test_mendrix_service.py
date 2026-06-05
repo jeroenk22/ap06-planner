@@ -14,6 +14,7 @@ from ap06_planner.services.mendrix_service import (
     haal_mendrix_namen_en_ids,
     haal_order_ids,
     haal_orders_debug,
+    werkdagen_van_week,
     zoek_mendrix_order,
 )
 
@@ -244,6 +245,27 @@ class TestHaalMendrixNamenEnIds:
             patch("ap06_planner.services.mendrix_service._maak_sessie", return_value=_mock_sessie(resp)),
         ):
             assert haal_mendrix_namen_en_ids(date(2026, 6, 5)) == {}
+
+
+class TestWerkdagenVanWeek:
+    def test_vrijdag_geeft_ma_tm_vr(self):
+        # vrijdag 06-06-2026 → week 23 → ma 01-06 t/m vr 05-06 (ISO week begint op ma)
+        # Eigenlijk: vrijdag 06-06-2026 zit in week 23 → ma 02-06 t/m vr 06-06
+        result = werkdagen_van_week(date(2026, 6, 6))
+        assert len(result) == 5
+        assert result[0].weekday() == 0  # maandag
+        assert result[4].weekday() == 4  # vrijdag
+        assert result[0] == date(2026, 6, 1)
+        assert result[4] == date(2026, 6, 5)
+
+    def test_maandag_geeft_zelfde_week(self):
+        result = werkdagen_van_week(date(2026, 6, 8))  # maandag
+        assert result[0] == date(2026, 6, 8)
+        assert result[4] == date(2026, 6, 12)
+
+    def test_altijd_5_dagen(self):
+        for dag in [date(2026, 6, d) for d in range(1, 8)]:
+            assert len(werkdagen_van_week(dag)) == 5
 
 
 class TestSslAdapter:

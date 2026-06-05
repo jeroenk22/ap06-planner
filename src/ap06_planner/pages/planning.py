@@ -16,7 +16,11 @@ from ap06_planner.models.schemas import ALGEMENE_INSTRUCTIE_AP06, Tijdvenster
 from ap06_planner.parsers.tijdvenster import parse_tijdvenster
 from ap06_planner.parsers.wijzigingen import pas_wijziging_toe, verwerk_wijzigingen
 from ap06_planner.parsers.xlsx_parser import lees_planningsbestand
-from ap06_planner.services.mendrix_service import haal_mendrix_namen_en_ids, zoek_mendrix_order
+from ap06_planner.services.mendrix_service import (
+    haal_mendrix_namen_en_ids,
+    werkdagen_van_week,
+    zoek_mendrix_order,
+)
 from ap06_planner.services.claude_service import (
     match_monsternemer_naam,
     verwerk_planningsregels_batch,
@@ -168,6 +172,30 @@ def render():
             state="complete",
             expanded=False,
         )
+
+    # Vul cache aan: alle werkdagen (ma-vr) van de weken die inplandatums bevatten
+    if os.getenv("MENDRIX_SOAP_URL") and mendrix_cache:
+        weken: set[tuple[int, int]] = set()
+        for output in alle_output:
+            inplan_str = output.get("inplannen_op", "")
+            datum_deel = inplan_str.split()[-1] if inplan_str else ""
+            if datum_deel:
+                d = parse_datum(datum_deel)
+                if d:
+                    iso = d.isocalendar()
+                    weken.add((iso.year, iso.week))
+
+        for jaar, week in weken:
+            # Bepaal via een willekeurige dag in die week welke werkdagen erbij horen
+            from datetime import date as _date
+            ankerdag = _date.fromisocalendar(jaar, week, 1)
+            for dag in werkdagen_van_week(ankerdag):
+                dag_str = dag.strftime("%d-%m-%Y")
+                if dag_str not in mendrix_cache:
+                    try:
+                        mendrix_cache[dag_str] = haal_mendrix_namen_en_ids(dag)
+                    except Exception:
+                        mendrix_cache[dag_str] = {}
 
     # Tweede pass: check of ❌-monsternemers ergens op een andere datum wel in Mendrix staan
     if mendrix_cache:

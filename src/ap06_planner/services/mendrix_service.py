@@ -9,7 +9,7 @@ Flow:
 import os
 import re
 import ssl
-from datetime import date
+from datetime import date, timedelta
 from html import escape, unescape
 from urllib.parse import urlparse
 
@@ -153,6 +153,13 @@ def _parseer_namen_en_ids(xml: str) -> dict[str, int]:
             if naam:
                 resultaat[naam] = int(order_id_m.group(1))
     return resultaat
+
+
+def werkdagen_van_week(datum: date) -> list[date]:
+    """Retourneert de werkdagen (ma-vr) van de ISO-week die de gegeven datum bevat."""
+    iso = datum.isocalendar()
+    maandag = date.fromisocalendar(iso.year, iso.week, 1)
+    return [maandag + timedelta(days=i) for i in range(5)]
 
 
 def haal_mendrix_namen_en_ids(datum: date) -> dict[str, int]:
