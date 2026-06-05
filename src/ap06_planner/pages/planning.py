@@ -197,16 +197,23 @@ def render():
                     except Exception:
                         mendrix_cache[dag_str] = {}
 
-    # Tweede pass: check of ❌-monsternemers ergens op een andere datum wel in Mendrix staan
+    # Tweede pass: check of ❌-monsternemers ergens op een andere datum in dezelfde week staan
     if mendrix_cache:
         for output in alle_output:
             if output.get("mendrix_order_id") is not None or "mendrix_order_id" not in output:
                 continue
             inplan_str = output.get("inplannen_op", "")
             eigen_datum = inplan_str.split()[-1] if inplan_str else ""
+            eigen_d = parse_datum(eigen_datum) if eigen_datum else None
+            eigen_week = eigen_d.isocalendar()[:2] if eigen_d else None  # (jaar, week)
             for datum_str_cached, namen_ids in mendrix_cache.items():
                 if datum_str_cached == eigen_datum or not namen_ids:
                     continue
+                # Alleen zoeken binnen dezelfde ISO-week als de inplandatum
+                if eigen_week:
+                    d_cached = parse_datum(datum_str_cached)
+                    if not d_cached or d_cached.isocalendar()[:2] != eigen_week:
+                        continue
                 order_id, mendrix_naam = zoek_mendrix_order(
                     output["naam_monsternemer"], namen_ids
                 )
