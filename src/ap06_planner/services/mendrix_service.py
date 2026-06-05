@@ -11,6 +11,7 @@ import re
 import ssl
 from datetime import date
 from html import escape, unescape
+from urllib.parse import urlparse
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -18,19 +19,27 @@ from urllib3.util.ssl_ import create_urllib3_context
 
 
 class _LegacySslAdapter(HTTPAdapter):
-    """Adapter die oudere TLS-cipher suites toestaat voor legacy SOAP-servers."""
+    """
+    Adapter voor de Mendrix SOAP-server die verouderde cipher suites gebruikt.
+    SECLEVEL=1 lost de cipher-mismatch op; TLS 1.2 minimum blijft gehandhaafd.
+    Wordt uitsluitend gemount op het Mendrix-endpoint, niet globaal.
+    """
 
     def init_poolmanager(self, *args, **kwargs):
         ctx = create_urllib3_context()
         ctx.set_ciphers("DEFAULT@SECLEVEL=1")
-        ctx.minimum_version = ssl.TLSVersion.TLSv1
+        ctx.minimum_version = ssl.TLSVersion.TLSv1_2
         kwargs["ssl_context"] = ctx
         super().init_poolmanager(*args, **kwargs)
 
 
 def _maak_sessie() -> requests.Session:
     s = requests.Session()
-    s.mount("https://", _LegacySslAdapter())
+    url = os.getenv("MENDRIX_SOAP_URL", "")
+    parsed = urlparse(url)
+    # Mount alleen op het Mendrix-host, niet op alle https://-verbindingen
+    prefix = f"{parsed.scheme}://{parsed.netloc}" if parsed.netloc else "https://"
+    s.mount(prefix, _LegacySslAdapter())
     return s
 
 _MENDRIX_CLIENT_NO = 3551
