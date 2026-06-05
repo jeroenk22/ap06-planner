@@ -261,3 +261,52 @@ Regels:
         return resultaat
     except Exception:
         return None
+
+
+def match_naam_mendrix(
+    zoek_naam: str,
+    kandidaten: list[str],
+) -> str | None:
+    """
+    Gebruik Claude om zoek_naam te matchen met een naam uit de Mendrix-kandidatenlijst.
+    Kandidaten kunnen een prefix bevatten zoals 'AP06/ONAFH -' of 'AP06 -'.
+
+    Returns:
+        De best matchende naam uit kandidaten (exact zoals hij staat), of None.
+    """
+    if not kandidaten:
+        return None
+
+    prompt = f"""Je krijgt een naam en een lijst met namen uit een ritplanningssysteem (Mendrix).
+Zoek welke naam uit de lijst het beste overeenkomt met de gegeven naam.
+Namen in de lijst kunnen een prefix hebben zoals "AP06/ONAFH -" of "AP06 -" — die mag je negeren bij het matchen.
+
+Naam om te matchen: "{zoek_naam}"
+
+Kandidatenlijst:
+{chr(10).join(f"- {n}" for n in kandidaten)}
+
+Antwoord ALLEEN met de exacte naam uit de lijst, of "GEEN" als er geen redelijke match is.
+"""
+
+    try:
+        client = _get_client()
+        message = client.messages.create(
+            model=MODEL,
+            max_tokens=100,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        tekst_blok = next(b for b in message.content if b.type == "text")
+        resultaat = tekst_blok.text.strip()
+        if resultaat == "GEEN":
+            return None
+        # Exacte match
+        if resultaat in kandidaten:
+            return resultaat
+        # Tolerante match: antwoord is substring van een kandidaat of vice versa
+        for k in kandidaten:
+            if resultaat in k or k in resultaat:
+                return k
+        return None
+    except Exception:
+        return None
