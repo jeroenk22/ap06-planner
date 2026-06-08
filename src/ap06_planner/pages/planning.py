@@ -197,7 +197,8 @@ def render():
                     except Exception:
                         mendrix_cache[dag_str] = {}
 
-    # Tweede pass: check of ❌-monsternemers ergens op een andere datum in dezelfde week staan
+    # Tweede pass: check of ❌-monsternemers ergens op een andere datum in dezelfde week staan.
+    # Sorteer op afstand tot de inplandatum zodat de dichtstbijzijnde datum als eerste wordt gekozen.
     if mendrix_cache:
         for output in alle_output:
             if output.get("mendrix_order_id") is not None or "mendrix_order_id" not in output:
@@ -206,14 +207,21 @@ def render():
             eigen_datum = inplan_str.split()[-1] if inplan_str else ""
             eigen_d = parse_datum(eigen_datum) if eigen_datum else None
             eigen_week = eigen_d.isocalendar()[:2] if eigen_d else None  # (jaar, week)
+
+            # Kandidaat-datums: zelfde week, niet eigen datum, gesorteerd op afstand
+            kandidaat_datums = []
             for datum_str_cached, namen_ids in mendrix_cache.items():
                 if datum_str_cached == eigen_datum or not namen_ids:
                     continue
-                # Alleen zoeken binnen dezelfde ISO-week als de inplandatum
-                if eigen_week:
-                    d_cached = parse_datum(datum_str_cached)
-                    if not d_cached or d_cached.isocalendar()[:2] != eigen_week:
-                        continue
+                d_cached = parse_datum(datum_str_cached)
+                if not d_cached:
+                    continue
+                if eigen_week and d_cached.isocalendar()[:2] != eigen_week:
+                    continue
+                afstand = abs((d_cached - eigen_d).days) if eigen_d else 0
+                kandidaat_datums.append((afstand, datum_str_cached, namen_ids))
+
+            for _, datum_str_cached, namen_ids in sorted(kandidaat_datums):
                 order_id, mendrix_naam = zoek_mendrix_order(
                     output["naam_monsternemer"], namen_ids, gebruik_ai_fallback=False
                 )
