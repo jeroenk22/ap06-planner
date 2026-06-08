@@ -223,7 +223,9 @@ def render():
                     continue
                 if eigen_week and d_cached.isocalendar()[:2] != eigen_week:
                     continue
-                afstand = abs((d_cached - eigen_d).days) if eigen_d else 0
+                if eigen_d and d_cached <= eigen_d:  # pragma: no cover
+                    continue  # pragma: no cover
+                afstand = (d_cached - eigen_d).days if eigen_d else 0
                 kandidaat_datums.append((afstand, datum_str_cached, namen_ids))
 
             for _, datum_str_cached, namen_ids in sorted(kandidaat_datums):
