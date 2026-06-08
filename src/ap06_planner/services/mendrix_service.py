@@ -140,9 +140,9 @@ def haal_orders_debug(order_ids: list[int], max_orders: int = 3) -> str:
     return _haal_orders_xml(order_ids[:max_orders])
 
 
-def _parseer_namen_en_ids(xml: str) -> dict[str, int]:
-    """Extraheer {address_name: order_id} uit Mendrix orders XML."""
-    resultaat: dict[str, int] = {}
+def _parseer_namen_en_ids(xml: str) -> dict[str, dict]:
+    """Extraheer {address_name: {"order_id": int, "van": str|None, "tot": str|None}} uit Mendrix orders XML."""
+    resultaat: dict[str, dict] = {}
     for blok in re.findall(r"<EoOrderMx\b[^>]*>(.*?)</EoOrderMx>", xml, re.DOTALL):
         order_id_m = re.search(r"<OrderId\b[^>]*>\s*<Id>(\d+)</Id>", blok, re.DOTALL)
         name_m = re.search(
@@ -151,7 +151,18 @@ def _parseer_namen_en_ids(xml: str) -> dict[str, int]:
         if order_id_m and name_m:
             naam = name_m.group(1).strip()
             if naam:
-                resultaat[naam] = int(order_id_m.group(1))
+                van: str | None = None
+                tot: str | None = None
+                req_m = re.search(r"<Requested\b[^>]*>(.*?)</Requested>", blok, re.DOTALL)
+                if req_m:
+                    begin_m = re.search(r"<DateTimeBegin>(.*?)</DateTimeBegin>", req_m.group(1))
+                    eind_m = re.search(r"<DateTimeEnd>(.*?)</DateTimeEnd>", req_m.group(1))
+                    # "2026-06-10T13:00:00" → "13:00"
+                    if begin_m and "T" in begin_m.group(1):
+                        van = begin_m.group(1).strip().split("T")[1][:5]
+                    if eind_m and "T" in eind_m.group(1):
+                        tot = eind_m.group(1).strip().split("T")[1][:5]
+                resultaat[naam] = {"order_id": int(order_id_m.group(1)), "van": van, "tot": tot}
     return resultaat
 
 
@@ -162,10 +173,10 @@ def werkdagen_van_week(datum: date) -> list[date]:
     return [maandag + timedelta(days=i) for i in range(5)]
 
 
-def haal_mendrix_namen_en_ids(datum: date) -> dict[str, int]:
+def haal_mendrix_namen_en_ids(datum: date) -> dict[str, dict]:
     """
-    Haal alle monsternemer-namen en bijbehorende order-IDs op voor de gegeven datum.
-    Returns: {mendrix_address_name: order_id}
+    Haal alle monsternemer-namen en bijbehorende order-info op voor de gegeven datum.
+    Returns: {mendrix_address_name: {"order_id": int, "van": str|None, "tot": str|None}}
     """
     order_ids = haal_order_ids(datum)
     if not order_ids:
@@ -217,7 +228,7 @@ def _simpele_naam_match(zoek: str, kandidaten: list[str]) -> str | None:
 
 def zoek_mendrix_order(
     naam: str,
-    mendrix_namen_ids: dict[str, int],
+    mendrix_namen_ids: dict[str, dict],
     gebruik_ai_fallback: bool = True,
 ) -> tuple[int | None, str | None]:
     """
@@ -234,7 +245,7 @@ def zoek_mendrix_order(
 
     match = _simpele_naam_match(naam, kandidaten)
     if match:
-        return mendrix_namen_ids[match], match
+        return mendrix_namen_ids[match]["order_id"], match
 
     if gebruik_ai_fallback:
         try:
@@ -242,7 +253,7 @@ def zoek_mendrix_order(
 
             ai_match = match_naam_mendrix(naam, kandidaten)
             if ai_match and ai_match in mendrix_namen_ids:
-                return mendrix_namen_ids[ai_match], ai_match
+                return mendrix_namen_ids[ai_match]["order_id"], ai_match
         except Exception:
             pass
 

@@ -150,6 +150,10 @@ def render():
                         )
                         output["mendrix_order_id"] = order_id
                         output["mendrix_naam"] = mendrix_naam
+                        if mendrix_naam and mendrix_naam in mendrix_namen_ids:
+                            info = mendrix_namen_ids[mendrix_naam]
+                            output["mendrix_van"] = info.get("van")
+                            output["mendrix_tot"] = info.get("tot")
                     alle_output.append(output)
                 else:
                     overgeslagen_namen.append(naam)
@@ -300,12 +304,15 @@ def render():
 
             mendrix_order_id = rec.get("mendrix_order_id")
             mendrix_naam = rec.get("mendrix_naam")
+            mendrix_van = rec.get("mendrix_van")
+            mendrix_tot = rec.get("mendrix_tot")
             mendrix_icon = ""
             mendrix_tip = ""
             if "mendrix_order_id" in rec:
                 if mendrix_order_id:
                     mendrix_icon = "✅"
-                    mendrix_tip = f"Order #{mendrix_order_id} ({mendrix_naam})"
+                    tijdvenster = f" {mendrix_van}-{mendrix_tot}" if mendrix_van and mendrix_tot else ""
+                    mendrix_tip = f"Order #{mendrix_order_id}{tijdvenster} ({mendrix_naam})"
                 elif rec.get("mendrix_andere_order_id"):
                     mendrix_icon = "⚠️"
                     mendrix_tip = (

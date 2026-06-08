@@ -162,6 +162,10 @@ _ORDER_XML = """<?xml version="1.0"?>
 <OrderId Type="TEoKeyIntInfraMx">
  <Id>1001</Id>
 </OrderId>
+<Requested>
+  <DateTimeBegin>2026-06-10T13:00:00</DateTimeBegin>
+  <DateTimeEnd>2026-06-10T17:00:00</DateTimeEnd>
+</Requested>
 <Tasks Type="TEoTaskMxList">
 <_TEoListBase_Items>
 <EoTaskMx Type="TEoTaskMx">
@@ -194,10 +198,8 @@ _ORDER_XML = """<?xml version="1.0"?>
 class TestParseerNamenEnIds:
     def test_parseert_twee_orders(self):
         resultaat = _parseer_namen_en_ids(_ORDER_XML)
-        assert resultaat == {
-            "AP06/ONAFH - Kathleen Bouvier": 1001,
-            "AP06 - Susan Curma": 1002,
-        }
+        assert resultaat["AP06/ONAFH - Kathleen Bouvier"] == {"order_id": 1001, "van": "13:00", "tot": "17:00"}
+        assert resultaat["AP06 - Susan Curma"] == {"order_id": 1002, "van": None, "tot": None}
 
     def test_leeg_xml(self):
         assert _parseer_namen_en_ids("") == {}
@@ -235,7 +237,7 @@ class TestHaalMendrixNamenEnIds:
             resultaat = haal_mendrix_namen_en_ids(date(2026, 6, 5))
 
         assert "AP06/ONAFH - Kathleen Bouvier" in resultaat
-        assert resultaat["AP06/ONAFH - Kathleen Bouvier"] == 1001
+        assert resultaat["AP06/ONAFH - Kathleen Bouvier"]["order_id"] == 1001
 
     def test_geen_orders(self):
         leeg = "<EoCustomLinkResponseOrdersNormalIds><Data><_TEoListBase_Items/></Data></EoCustomLinkResponseOrdersNormalIds>"
@@ -333,15 +335,20 @@ class TestSimpeleNaamMatch:
         assert resultaat == "AP06 - Susan Curma"
 
 
+_INFO_1001 = {"order_id": 1001, "van": "13:00", "tot": "17:00"}
+_INFO_2002 = {"order_id": 2002, "van": None, "tot": None}
+_INFO_999 = {"order_id": 999, "van": None, "tot": None}
+
+
 class TestZoekMendrixOrder:
     def test_gevonden_via_simpele_match(self):
-        mendrix = {"AP06/ONAFH - Kathleen Bouvier": 1001}
+        mendrix = {"AP06/ONAFH - Kathleen Bouvier": _INFO_1001}
         order_id, naam = zoek_mendrix_order("Kathleen Bouvier", mendrix)
         assert order_id == 1001
         assert naam == "AP06/ONAFH - Kathleen Bouvier"
 
     def test_niet_gevonden_zonder_ai(self):
-        mendrix = {"AP06 - Jan Jansen": 999}
+        mendrix = {"AP06 - Jan Jansen": _INFO_999}
         with patch("ap06_planner.services.claude_service.match_naam_mendrix", return_value=None):
             order_id, naam = zoek_mendrix_order("Piet Pietersen", mendrix)
         assert order_id is None
@@ -349,7 +356,7 @@ class TestZoekMendrixOrder:
 
     def test_gevonden_via_ai_fallback(self):
         # "PDW" (initialen) heeft geen woord-overlap → simpele match faalt → AI-fallback
-        mendrix = {"AP06/ONAFH - Petra de Wit": 2002}
+        mendrix = {"AP06/ONAFH - Petra de Wit": _INFO_2002}
         with patch("ap06_planner.services.claude_service.match_naam_mendrix", return_value="AP06/ONAFH - Petra de Wit"):
             order_id, naam = zoek_mendrix_order("PDW", mendrix)
         assert order_id == 2002
@@ -359,7 +366,7 @@ class TestZoekMendrixOrder:
         assert zoek_mendrix_order("Kathleen Bouvier", {}) == (None, None)
 
     def test_ai_fallback_exception_wordt_genegeerd(self):
-        mendrix = {"AP06/ONAFH - Petra de Wit": 2002}
+        mendrix = {"AP06/ONAFH - Petra de Wit": _INFO_2002}
         with patch("ap06_planner.services.claude_service.match_naam_mendrix", side_effect=Exception("API fout")):
             order_id, naam = zoek_mendrix_order("PDW", mendrix)
         assert order_id is None
