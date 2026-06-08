@@ -215,7 +215,7 @@ def render():
                     if not d_cached or d_cached.isocalendar()[:2] != eigen_week:
                         continue
                 order_id, mendrix_naam = zoek_mendrix_order(
-                    output["naam_monsternemer"], namen_ids
+                    output["naam_monsternemer"], namen_ids, gebruik_ai_fallback=False
                 )
                 if order_id:
                     output["mendrix_andere_order_id"] = order_id

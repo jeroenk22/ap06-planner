@@ -218,10 +218,13 @@ def _simpele_naam_match(zoek: str, kandidaten: list[str]) -> str | None:
 def zoek_mendrix_order(
     naam: str,
     mendrix_namen_ids: dict[str, int],
+    gebruik_ai_fallback: bool = True,
 ) -> tuple[int | None, str | None]:
     """
     Zoek een bestaand Mendrix-order voor de gegeven monsternemer-naam.
-    Probeert eerst simpele word-overlap, dan AI als fallback.
+    Probeert eerst simpele word-overlap, dan AI als fallback (tenzij gebruik_ai_fallback=False).
+    Gebruik gebruik_ai_fallback=False voor de tweede pass (⚠️-detectie op andere datum):
+    liever ❌ dan een verkeerde ⚠️ door een AI die een andere persoon koppelt.
     Returns: (order_id, gematchte_mendrix_naam) of (None, None).
     """
     if not mendrix_namen_ids:
@@ -233,14 +236,14 @@ def zoek_mendrix_order(
     if match:
         return mendrix_namen_ids[match], match
 
-    # AI-fallback
-    try:
-        from ap06_planner.services.claude_service import match_naam_mendrix
+    if gebruik_ai_fallback:
+        try:
+            from ap06_planner.services.claude_service import match_naam_mendrix
 
-        ai_match = match_naam_mendrix(naam, kandidaten)
-        if ai_match and ai_match in mendrix_namen_ids:
-            return mendrix_namen_ids[ai_match], ai_match
-    except Exception:
-        pass
+            ai_match = match_naam_mendrix(naam, kandidaten)
+            if ai_match and ai_match in mendrix_namen_ids:
+                return mendrix_namen_ids[ai_match], ai_match
+        except Exception:
+            pass
 
     return None, None
