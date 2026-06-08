@@ -174,19 +174,37 @@ def haal_mendrix_namen_en_ids(datum: date) -> dict[str, int]:
     return _parseer_namen_en_ids(xml)
 
 
+_TUSSENVOEGSELS = frozenset(
+    {"van", "de", "den", "der", "het", "ten", "ter", "in", "op", "te", "uit", "bij", "des"}
+)
+
+
+def _achternaam(naam_lower: str) -> str | None:
+    """Laatste woord dat geen Nederlands tussenvoegsel is."""
+    return next((w for w in reversed(naam_lower.split()) if w not in _TUSSENVOEGSELS), None)
+
+
 def _simpele_naam_match(zoek: str, kandidaten: list[str]) -> str | None:
     """
     Probeer zoek te matchen met een van de kandidaten via word-overlap.
     Strips prefixes zoals 'AP06/ONAFH -', 'AP06 -' voor vergelijking.
+    Achternamen (laatste niet-tussenvoegsel woord) moeten overeenkomen om
+    false positives zoals 'Johan van Zoggel' ↔ 'Johan van Gool' te voorkomen.
     """
-    zoek_woorden = set(zoek.lower().split())
+    zoek_lower = zoek.lower()
+    zoek_woorden = set(zoek_lower.split())
+    zoek_ach = _achternaam(zoek_lower)
     beste: str | None = None
     beste_score = 0.0
 
     for naam in kandidaten:
         kern = naam.split(" - ", 1)[-1].strip() if " - " in naam else naam
-        naam_woorden = set(kern.lower().split())
+        kern_lower = kern.lower()
+        naam_woorden = set(kern_lower.split())
         if not naam_woorden:
+            continue
+        # Achternamen moeten overeenkomen
+        if zoek_ach and _achternaam(kern_lower) != zoek_ach:
             continue
         overlap = zoek_woorden & naam_woorden
         score = len(overlap) / max(len(zoek_woorden), len(naam_woorden))

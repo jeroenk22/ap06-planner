@@ -312,11 +312,19 @@ class TestSimpeleNaamMatch:
         kandidaten = ["AP06 - Jan Jansen"]
         assert _simpele_naam_match("Piet Pietersen", kandidaten) is None
 
-    def test_gedeeltelijke_match_achternaam(self):
+    def test_omgekeerde_naamvolgorde_geen_match(self):
+        # "Bouvier K" heeft achternaam als eerste woord — geen match, gaat naar AI-fallback
         kandidaten = ["AP06 - Bouvier K"]
-        # "Bouvier" zit in beide → score hoog genoeg
-        resultaat = _simpele_naam_match("Kathleen Bouvier", kandidaten)
-        assert resultaat == "AP06 - Bouvier K"
+        assert _simpele_naam_match("Kathleen Bouvier", kandidaten) is None
+
+    def test_gedeelde_voornaam_geen_false_positive(self):
+        # "Johan van Zoggel" mag NIET matchen op "Johan van Gool" (andere achternaam)
+        kandidaten = ["AP06/ONAFH - Johan van Gool"]
+        assert _simpele_naam_match("Johan van Zoggel", kandidaten) is None
+
+    def test_zelfde_achternaam_matcht(self):
+        kandidaten = ["AP06/ONAFH - Johan van Gool"]
+        assert _simpele_naam_match("Johan van Gool", kandidaten) == "AP06/ONAFH - Johan van Gool"
 
     def test_lege_naam_in_kandidaten_wordt_overgeslagen(self):
         # Kandidaat met lege kern na split op " - " → wordt overgeslagen
