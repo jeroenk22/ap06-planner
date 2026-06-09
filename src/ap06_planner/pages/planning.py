@@ -37,28 +37,16 @@ _MENDRIX_KLEUR_HEX = {"groen": "#2e7d32", "geel": "#e65100", "rood": "#c62828"}
 
 
 def _tijdafwijking_kleur(planning_begin: str, mendrix_van: str) -> str:
-    """Vergelijk planning begintijd met Mendrix van-tijd. Begintijd is leidend voor de kleur."""
+    """Vergelijk planning begintijd met Mendrix van-tijd. Groen < 30 min, geel >= 30 min."""
     try:
         ph, pm = int(planning_begin[:2]), int(planning_begin[3:5])
         mh, mm = int(mendrix_van[:2]), int(mendrix_van[3:5])
         diff = abs(ph * 60 + pm - (mh * 60 + mm))
-        if diff > 60:
-            return "rood"
         if diff >= 30:
             return "geel"
         return "groen"
     except (ValueError, IndexError):
         return "groen"
-
-
-def _bereken_eind_diff_min(planning_eind: str, mendrix_tot: str) -> int | None:
-    """Bereken absolute afwijking in minuten tussen planning eindtijd en Mendrix tot-tijd."""
-    try:
-        pe_h, pe_m = int(planning_eind[:2]), int(planning_eind[3:5])
-        mt_h, mt_m = int(mendrix_tot[:2]), int(mendrix_tot[3:5])
-        return abs(pe_h * 60 + pe_m - (mt_h * 60 + mt_m))
-    except (ValueError, IndexError):
-        return None
 
 
 def render():
@@ -339,7 +327,6 @@ def render():
             mendrix_naam = rec.get("mendrix_naam")
             mendrix_tijdvenster = rec.get("mendrix_tijdvenster", "")
             mendrix_van = rec.get("mendrix_van", "")
-            mendrix_tot = rec.get("mendrix_tot", "")
             mendrix_icon = ""
             mendrix_tip = ""
             mendrix_tv_html = ""
@@ -357,20 +344,9 @@ def render():
                             else "groen"
                         )  # pragma: no cover
                         hex_kleur = _MENDRIX_KLEUR_HEX[kleur]  # pragma: no cover
-                        planning_eind = (rec.get("laatste_tijdvenster") or "").split(" - ")[
-                            -1
-                        ]  # pragma: no cover
-                        eind_diff_min = (  # pragma: no cover
-                            _bereken_eind_diff_min(planning_eind, mendrix_tot)
-                            if planning_eind and mendrix_tot
-                            else None
-                        )
-                        eind_info = (
-                            f" (eindtijd Δ{eind_diff_min}min)" if eind_diff_min else ""
-                        )  # pragma: no cover
                         mendrix_tv_html = (  # pragma: no cover
                             f'<span style="color:{hex_kleur};font-weight:600">'
-                            f"{html_escape(mendrix_tijdvenster)}{html_escape(eind_info)}</span>"
+                            f"{html_escape(mendrix_tijdvenster)}</span>"
                         )
                 elif rec.get("mendrix_andere_order_id"):
                     mendrix_icon = "⚠️"
