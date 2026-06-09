@@ -8,6 +8,7 @@ import math
 import os
 import re
 from datetime import timedelta
+from html import escape as html_escape
 from io import BytesIO
 
 import streamlit as st
@@ -369,7 +370,7 @@ def render():
                         )  # pragma: no cover
                         mendrix_tv_html = (  # pragma: no cover
                             f'<span style="color:{hex_kleur};font-weight:600">'
-                            f"{mendrix_tijdvenster}{eind_info}</span>"
+                            f"{html_escape(mendrix_tijdvenster)}{html_escape(eind_info)}</span>"
                         )
                 elif rec.get("mendrix_andere_order_id"):
                     mendrix_icon = "⚠️"
@@ -391,7 +392,7 @@ def render():
                     if mendrix_tv_html:
                         st.markdown(
                             f"{mendrix_icon} {mendrix_tv_html}<br>"
-                            f'<span style="font-size:0.8em;color:#888">{mendrix_tip}</span>',
+                            f'<span style="font-size:0.8em;color:#888">{html_escape(mendrix_tip)}</span>',
                             unsafe_allow_html=True,
                         )
                     else:
