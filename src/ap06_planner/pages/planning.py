@@ -16,16 +16,16 @@ from ap06_planner.models.schemas import ALGEMENE_INSTRUCTIE_AP06, Tijdvenster
 from ap06_planner.parsers.tijdvenster import parse_tijdvenster
 from ap06_planner.parsers.wijzigingen import pas_wijziging_toe, verwerk_wijzigingen
 from ap06_planner.parsers.xlsx_parser import lees_planningsbestand
-from ap06_planner.services.mendrix_service import (
-    haal_mendrix_namen_en_ids,
-    werkdagen_van_week,
-    zoek_mendrix_order,
-)
 from ap06_planner.services.claude_service import (
     match_monsternemer_naam,
     verwerk_planningsregels_batch,
 )
 from ap06_planner.services.db_service import haal_alle_monsternemers, zoek_monsternemer
+from ap06_planner.services.mendrix_service import (
+    haal_mendrix_namen_en_ids,
+    werkdagen_van_week,
+    zoek_mendrix_order,
+)
 from ap06_planner.services.nager_service import eerstvolgende_ophaaldag, is_feestdag
 from ap06_planner.services.osrm_service import _geocodeer, bereken_aankomsttijd
 from ap06_planner.utils.date_utils import DAGAFKORTINGEN, format_datum_nl, is_ophaaldag, parse_datum
@@ -193,6 +193,7 @@ def render():
         for jaar, week in weken:
             # Bepaal via een willekeurige dag in die week welke werkdagen erbij horen
             from datetime import date as _date
+
             ankerdag = _date.fromisocalendar(jaar, week, 1)
             for dag in werkdagen_van_week(ankerdag):
                 dag_str = dag.strftime("%d-%m-%Y")
@@ -255,7 +256,6 @@ def render():
             )
         with st.expander("🔧 Debug: gedetecteerde kolommen", expanded=False):
             st.json(res["kolommap"])
-
 
         if res["overgeslagen_namen"]:
             with st.expander(
