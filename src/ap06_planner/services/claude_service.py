@@ -117,6 +117,9 @@ def verwerk_planningsregels_batch(
     chunk_size = 10
     alle_uniq: list[dict] = []
     tekst_blok = None
+    totaal_input = 0
+    totaal_cache_create = 0
+    totaal_cache_read = 0
     try:
         client = _get_client()
         for i in range(0, len(uniq_regels), chunk_size):
@@ -133,6 +136,10 @@ def verwerk_planningsregels_batch(
                 ],
                 messages=[{"role": "user", "content": json.dumps(chunk, ensure_ascii=False)}],
             )
+            u = message.usage
+            totaal_input += u.input_tokens
+            totaal_cache_create += getattr(u, "cache_creation_input_tokens", 0) or 0
+            totaal_cache_read += getattr(u, "cache_read_input_tokens", 0) or 0
             tekst_blok = next(b for b in message.content if b.type == "text")
             chunk_resultaten = _parse_json(tekst_blok.text)
             if len(chunk_resultaten) != len(chunk):
@@ -141,6 +148,14 @@ def verwerk_planningsregels_batch(
                     f"voor {len(chunk)} invoer-regels (chunk {i // chunk_size + 1})"
                 )
             alle_uniq.extend(chunk_resultaten)
+
+        import sys
+        print(
+            f"[Claude batch] {len(uniq_regels)} unieke items ({len(regels)} totaal) | "
+            f"input={totaal_input} cache_create={totaal_cache_create} cache_read={totaal_cache_read} tokens "
+            f"| limit=30K/min",
+            file=sys.stderr,
+        )
 
         # Map terug naar originele volgorde
         resultaten = []
