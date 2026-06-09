@@ -102,7 +102,9 @@ def _osrm_route(start_lon: float, start_lat: float, eind_lon: float, eind_lat: f
         servers.append(OSRM_FALLBACK)
 
     for base in servers:
-        url = f"{base}/route/v1/driving/{start_lon},{start_lat};{eind_lon},{eind_lat}?overview=false"
+        url = (
+            f"{base}/route/v1/driving/{start_lon},{start_lat};{eind_lon},{eind_lat}?overview=false"
+        )
         try:
             resp = requests.get(url, timeout=15)
             resp.raise_for_status()

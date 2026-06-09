@@ -838,8 +838,13 @@ class TestVerwerkMonsternemer:
             patch("ap06_planner.pages.planning.match_monsternemer_naam", return_value=None),
             patch("ap06_planner.pages.planning.verwerk_wijzigingen", return_value=negeer),
             patch("ap06_planner.pages.planning.is_feestdag", return_value=False),
-            patch("ap06_planner.pages.planning.eerstvolgende_ophaaldag", return_value=(maandag, False)),
-            patch("ap06_planner.pages.planning.bereken_aankomsttijd", return_value=("10:00", "23:59", "debug")),
+            patch(
+                "ap06_planner.pages.planning.eerstvolgende_ophaaldag", return_value=(maandag, False)
+            ),
+            patch(
+                "ap06_planner.pages.planning.bereken_aankomsttijd",
+                return_value=("10:00", "23:59", "debug"),
+            ),
         ):
             result = _verwerk_monsternemer(
                 naam="Jan de Vries",

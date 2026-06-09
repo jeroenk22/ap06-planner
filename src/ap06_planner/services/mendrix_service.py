@@ -42,6 +42,7 @@ def _maak_sessie() -> requests.Session:
     s.mount(prefix, _LegacySslAdapter())
     return s
 
+
 _MENDRIX_CLIENT_NO = 3551
 _SOAP_ACTION = '"urn:UCoSoapDispatcherCustomLink-ICustomLinkSoap#ExecuteRequest"'
 

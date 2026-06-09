@@ -150,6 +150,7 @@ def verwerk_planningsregels_batch(
             alle_uniq.extend(chunk_resultaten)
 
         import sys
+
         print(
             f"[Claude batch] {len(uniq_regels)} unieke items ({len(regels)} totaal) | "
             f"input={totaal_input} cache_create={totaal_cache_create} cache_read={totaal_cache_read} tokens "
