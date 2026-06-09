@@ -46,3 +46,6 @@ htmlcov/
 # Uploads (tijdelijk)
 uploads/
 *.xlsx.bak
+
+# Debug dumps (kunnen persoonsgegevens bevatten)
+*_debug.xml

@@ -62,7 +62,7 @@ def render():
                     unsafe_allow_html=True,
                 )
             else:
-                st.button(label, on_click=_nav, args=(label,), use_container_width=True)
+                st.button(label, on_click=_nav, args=(label,), width="stretch")
 
     st.divider()
 
@@ -100,7 +100,7 @@ def _render_overzicht_tabel(monsternemers: list) -> None:
     ]
     st.dataframe(
         pd.DataFrame(data),
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         column_config={
             "Uiterlijke tijd": st.column_config.TextColumn(
@@ -442,7 +442,7 @@ def _render_import():
         return
 
     st.info(f"Gevonden: {len(preview_data)} monsternemers")
-    st.dataframe(pd.DataFrame(preview_data), use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(preview_data), width="stretch", hide_index=True)
 
     if st.button("Importeer alle monsternemers", type="primary"):
         for m in monsternemers_te_importeren:

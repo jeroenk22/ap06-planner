@@ -141,33 +141,77 @@ def haal_orders_debug(order_ids: list[int], max_orders: int = 3) -> str:
     return _haal_orders_xml(order_ids[:max_orders])
 
 
+def _bereken_duur(begin: str, eind: str) -> tuple[float, str]:
+    """Duur tussen twee HH:MM tijden. Retourneert (uren_float, DurationInDateTime-string)."""
+    bh, bm = int(begin[:2]), int(begin[3:5])
+    eh, em = int(eind[:2]), int(eind[3:5])
+    minuten = (eh * 60 + em) - (bh * 60 + bm)
+    if minuten < 0:
+        minuten += 24 * 60
+    uren = minuten / 60.0
+    hh, mm = divmod(minuten, 60)
+    return uren, f"1899-12-30T{hh:02d}:{mm:02d}:00+01:00"
+
+
 def _vervang_requested_tijden(xml: str, nieuwe_begin: str, nieuwe_eind: str) -> str:
-    """Vervang DateTimeBegin en DateTimeEnd uitsluitend binnen <Requested> blokken."""
+    """Vervang DateTimeBegin, DateTimeEnd en DurationIn* uitsluitend binnen <Requested> blokken."""
+    duur_uren, duur_dt = _bereken_duur(nieuwe_begin, nieuwe_eind)
 
     def _verwerk_blok(m: re.Match) -> str:
-        return re.sub(
+        blok = re.sub(
+            r"(<DateTimeBegin>[^T<]*T)\d{2}:\d{2}(:\d{2})?([^<]*</DateTimeBegin>)",
+            lambda b: f"{b.group(1)}{nieuwe_begin}:00{b.group(3)}",
+            m.group(0),
+        )
+        blok = re.sub(
             r"(<DateTimeEnd>[^T<]*T)\d{2}:\d{2}(:\d{2})?([^<]*</DateTimeEnd>)",
             lambda b: f"{b.group(1)}{nieuwe_eind}:00{b.group(3)}",
-            re.sub(
-                r"(<DateTimeBegin>[^T<]*T)\d{2}:\d{2}(:\d{2})?([^<]*</DateTimeBegin>)",
-                lambda b: f"{b.group(1)}{nieuwe_begin}:00{b.group(3)}",
-                m.group(0),
-            ),
+            blok,
         )
+        blok = re.sub(
+            r"<DurationInHours>[^<]*</DurationInHours>",
+            f"<DurationInHours>{duur_uren}</DurationInHours>",
+            blok,
+        )
+        blok = re.sub(
+            r"<DurationInDateTime>[^<]*</DurationInDateTime>",
+            f"<DurationInDateTime>{duur_dt}</DurationInDateTime>",
+            blok,
+        )
+        return blok
 
     return re.sub(r"<Requested\b[^>]*>.*?</Requested>", _verwerk_blok, xml, flags=re.DOTALL)
 
 
+def _splits_order_xml(batch_xml: str) -> dict[int, str]:
+    """Splits batch response XML in losse per-order XML strings, klaar voor Store-aanroep."""
+    wrapper_m = re.search(r"(<EoCustomLinkResponseOrdersNormal\b[^>]*>)", batch_xml)
+    open_tag = wrapper_m.group(1) if wrapper_m else "<EoCustomLinkResponseOrdersNormal>"
+    data_m = re.search(r"(<Data\b[^>]*>)", batch_xml)
+    data_open = data_m.group(1) if data_m else "<Data>"
+    result: dict[int, str] = {}
+    for blok in re.findall(r"<EoOrderMx\b[^>]*>.*?</EoOrderMx>", batch_xml, re.DOTALL):
+        id_m = re.search(r"<OrderId\b[^>]*>\s*<Id>(\d+)</Id>", blok, re.DOTALL)
+        if id_m:
+            oid = int(id_m.group(1))
+            inner = f"{data_open}\n<_TEoListBase_Items>\n{blok}\n</_TEoListBase_Items>\n</Data>"
+            result[oid] = f"{open_tag}\n{inner}\n</EoCustomLinkResponseOrdersNormal>"
+    return result
+
+
 def update_mendrix_tijdvenster(
-    order_id: int, nieuwe_begin: str, nieuwe_eind: str
+    order_id: int,
+    nieuwe_begin: str,
+    nieuwe_eind: str,
+    cached_xml: str | None = None,
 ) -> tuple[bool, str]:
     """
     Update de Requested DateTimeBegin en DateTimeEnd van een Mendrix order.
-    Haalt eerst de huidige XML op, past de tijden aan en stuurt terug.
+    Als cached_xml meegegeven is, wordt die gebruikt i.p.v. een nieuwe SOAP-fetch.
     Returns (succes, melding).
     """
     try:
-        response_xml = _haal_orders_xml([order_id])
+        response_xml = cached_xml or _haal_orders_xml([order_id])
         if not response_xml:
             return False, "Geen order XML ontvangen van Mendrix"
 
@@ -239,6 +283,19 @@ def haal_mendrix_namen_en_ids(datum: date) -> dict[str, dict]:
         return {}
     xml = _haal_orders_xml(order_ids)
     return _parseer_namen_en_ids(xml)
+
+
+def haal_mendrix_namen_ids_en_xml(datum: date) -> tuple[dict[str, dict], dict[int, str]]:
+    """
+    Zoals haal_mendrix_namen_en_ids, maar geeft ook per-order XML terug voor gebruik
+    als cached_xml in update_mendrix_tijdvenster (vermijdt dubbele SOAP-fetch).
+    Returns: (namen_ids, {order_id: xml_string})
+    """
+    order_ids = haal_order_ids(datum)
+    if not order_ids:
+        return {}, {}
+    xml = _haal_orders_xml(order_ids)
+    return _parseer_namen_en_ids(xml), _splits_order_xml(xml)
 
 
 _TUSSENVOEGSELS = frozenset(

@@ -49,10 +49,13 @@ src/ap06_planner/
     tijdvenster.py → "Bladel TonTrans 7-18 LAD17" → {plaats, start, eind}
     wijzigingen.py → "Naar 12-18", "Anouk na 12", "vervallen" verwerken
   services/
-    claude_service.py → Claude API voor complexe/ambigue cases
-    osrm_service.py   → Reistijd berekening (A→B in minuten)
-    nager_service.py  → NL nationale feestdagen via Nager.Date API
-    db_service.py     → SQLite CRUD voor monsternemers
+    claude_service.py  → Claude API voor complexe/ambigue cases
+    osrm_service.py    → Reistijd berekening (A→B in minuten)
+    nager_service.py   → NL nationale feestdagen via Nager.Date API
+    db_service.py      → SQLite CRUD voor monsternemers
+    mendrix_service.py → Mendrix SOAP Custom Link integratie
+docs/
+  Mendrix_soap_customlink_docs.md → ALTIJD raadplegen bij elke wijziging aan mendrix_service.py
   models/
     schemas.py     → Dataklassen (MonsternemeRecord, PlanningRow, etc.)
   utils/
