@@ -32,6 +32,33 @@ from ap06_planner.utils.date_utils import DAGAFKORTINGEN, format_datum_nl, is_op
 
 _DAGBLOK_RE = re.compile(r"\b(?:dagblok|ochtendblok)\b", re.IGNORECASE)
 
+_MENDRIX_KLEUR_HEX = {"groen": "#2e7d32", "geel": "#e65100", "rood": "#c62828"}
+
+
+def _tijdafwijking_kleur(planning_begin: str, mendrix_van: str) -> str:
+    """Vergelijk planning begintijd met Mendrix van-tijd. Begintijd is leidend voor de kleur."""
+    try:
+        ph, pm = int(planning_begin[:2]), int(planning_begin[3:5])
+        mh, mm = int(mendrix_van[:2]), int(mendrix_van[3:5])
+        diff = abs(ph * 60 + pm - (mh * 60 + mm))
+        if diff > 60:
+            return "rood"
+        if diff >= 30:
+            return "geel"
+        return "groen"
+    except (ValueError, IndexError):
+        return "groen"
+
+
+def _bereken_eind_diff_min(planning_eind: str, mendrix_tot: str) -> int | None:
+    """Bereken absolute afwijking in minuten tussen planning eindtijd en Mendrix tot-tijd."""
+    try:
+        pe_h, pe_m = int(planning_eind[:2]), int(planning_eind[3:5])
+        mt_h, mt_m = int(mendrix_tot[:2]), int(mendrix_tot[3:5])
+        return abs(pe_h * 60 + pe_m - (mt_h * 60 + mt_m))
+    except (ValueError, IndexError):
+        return None
+
 
 def render():
     st.title("📋 Planning verwerken")
@@ -154,6 +181,8 @@ def render():
                             info = mendrix_namen_ids[mendrix_naam]
                             van = info.get("van")
                             tot = info.get("tot")
+                            output["mendrix_van"] = van or ""
+                            output["mendrix_tot"] = tot or ""
                             output["mendrix_tijdvenster"] = f"{van}-{tot}" if van and tot else ""
                     alle_output.append(output)
                 else:
@@ -308,13 +337,40 @@ def render():
             mendrix_order_id = rec.get("mendrix_order_id")
             mendrix_naam = rec.get("mendrix_naam")
             mendrix_tijdvenster = rec.get("mendrix_tijdvenster", "")
+            mendrix_van = rec.get("mendrix_van", "")
+            mendrix_tot = rec.get("mendrix_tot", "")
             mendrix_icon = ""
             mendrix_tip = ""
+            mendrix_tv_html = ""
             if "mendrix_order_id" in rec:
                 if mendrix_order_id:
                     mendrix_icon = "✅"
-                    tv = f" {mendrix_tijdvenster}" if mendrix_tijdvenster else ""
-                    mendrix_tip = f"Order #{mendrix_order_id}{tv} ({mendrix_naam})"
+                    mendrix_tip = f"Order #{mendrix_order_id} ({mendrix_naam})"
+                    if mendrix_tijdvenster:  # pragma: no cover
+                        planning_begin = (rec.get("laatste_tijdvenster") or "").split(" - ")[
+                            0
+                        ]  # pragma: no cover
+                        kleur = (
+                            _tijdafwijking_kleur(planning_begin, mendrix_van)
+                            if (planning_begin and mendrix_van)
+                            else "groen"
+                        )  # pragma: no cover
+                        hex_kleur = _MENDRIX_KLEUR_HEX[kleur]  # pragma: no cover
+                        planning_eind = (rec.get("laatste_tijdvenster") or "").split(" - ")[
+                            -1
+                        ]  # pragma: no cover
+                        eind_diff_min = (  # pragma: no cover
+                            _bereken_eind_diff_min(planning_eind, mendrix_tot)
+                            if planning_eind and mendrix_tot
+                            else None
+                        )
+                        eind_info = (
+                            f" (eindtijd Δ{eind_diff_min}min)" if eind_diff_min else ""
+                        )  # pragma: no cover
+                        mendrix_tv_html = (  # pragma: no cover
+                            f'<span style="color:{hex_kleur};font-weight:600">'
+                            f"{mendrix_tijdvenster}{eind_info}</span>"
+                        )
                 elif rec.get("mendrix_andere_order_id"):
                     mendrix_icon = "⚠️"
                     mendrix_tip = (
@@ -332,7 +388,14 @@ def render():
                 st.write(gewensttijd)
             with col_mendrix:
                 if mendrix_icon:
-                    st.caption(f"{mendrix_icon} {mendrix_tip}")
+                    if mendrix_tv_html:
+                        st.markdown(
+                            f"{mendrix_icon} {mendrix_tv_html}<br>"
+                            f'<span style="font-size:0.8em;color:#888">{mendrix_tip}</span>',
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        st.caption(f"{mendrix_icon} {mendrix_tip}")
             with col_reden:
                 if toon_toelichting:
                     st.caption(toon_toelichting)

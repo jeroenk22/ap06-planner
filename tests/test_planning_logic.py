@@ -7,8 +7,10 @@ import pytest
 
 from ap06_planner.models.schemas import Monsternemer, PlanningRegel, Tijdvenster
 from ap06_planner.pages.planning import (
+    _bereken_eind_diff_min,
     _haversine_km,
     _kies_laatste_tv,
+    _tijdafwijking_kleur,
     _verwerk_monsternemer,
 )
 
@@ -69,6 +71,42 @@ def _regel(
 
 
 # ─── _haversine_km ───────────────────────────────────────────────────────────
+
+
+class TestTijdafwijkingKleur:
+    def test_geen_afwijking_is_groen(self):
+        assert _tijdafwijking_kleur("07:00", "07:00") == "groen"
+
+    def test_kleine_afwijking_is_groen(self):
+        assert _tijdafwijking_kleur("07:00", "07:20") == "groen"
+
+    def test_halfuur_is_geel(self):
+        assert _tijdafwijking_kleur("07:00", "07:30") == "geel"
+
+    def test_uur_is_geel(self):
+        assert _tijdafwijking_kleur("07:00", "08:00") == "geel"
+
+    def test_meer_dan_uur_is_rood(self):
+        assert _tijdafwijking_kleur("07:00", "08:01") == "rood"
+
+    def test_negatieve_richting_ook_rood(self):
+        assert _tijdafwijking_kleur("13:00", "07:00") == "rood"
+
+    def test_ongeldige_input_geeft_groen(self):
+        assert _tijdafwijking_kleur("", "07:00") == "groen"
+        assert _tijdafwijking_kleur("07:00", "") == "groen"
+
+
+class TestBerekenEindDiffMin:
+    def test_geen_afwijking(self):
+        assert _bereken_eind_diff_min("18:00", "18:00") == 0
+
+    def test_halfuur_afwijking(self):
+        assert _bereken_eind_diff_min("18:00", "17:30") == 30
+
+    def test_ongeldige_input_geeft_none(self):
+        assert _bereken_eind_diff_min("", "18:00") is None
+        assert _bereken_eind_diff_min("18:00", "") is None
 
 
 class TestHaversineKm:
