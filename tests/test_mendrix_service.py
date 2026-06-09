@@ -6,7 +6,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-import ap06_planner.services.mendrix_service as ms
 from ap06_planner.services.mendrix_service import (
     _bouw_soap_envelope,
     _parseer_namen_en_ids,
@@ -48,7 +47,9 @@ def _mock_sessie(resp: MagicMock) -> MagicMock:
 
 class TestBouwSoapEnvelope:
     def test_bevat_username(self):
-        with patch.dict("os.environ", {"MENDRIX_SOAP_USER": "testuser", "MENDRIX_SOAP_PASS": "testpass"}):
+        with patch.dict(
+            "os.environ", {"MENDRIX_SOAP_USER": "testuser", "MENDRIX_SOAP_PASS": "testpass"}
+        ):
             env = _bouw_soap_envelope("<Test/>")
         assert "testuser" in env
 
@@ -78,8 +79,18 @@ class TestHaalOrderIds:
 </EoCustomLinkResponseOrdersNormalIds>"""
         resp = _mock_resp(ids_xml)
         with (
-            patch.dict("os.environ", {"MENDRIX_SOAP_URL": "https://test.nl/soap", "MENDRIX_SOAP_USER": "u", "MENDRIX_SOAP_PASS": "p"}),
-            patch("ap06_planner.services.mendrix_service._maak_sessie", return_value=_mock_sessie(resp)),
+            patch.dict(
+                "os.environ",
+                {
+                    "MENDRIX_SOAP_URL": "https://test.nl/soap",
+                    "MENDRIX_SOAP_USER": "u",
+                    "MENDRIX_SOAP_PASS": "p",
+                },
+            ),
+            patch(
+                "ap06_planner.services.mendrix_service._maak_sessie",
+                return_value=_mock_sessie(resp),
+            ),
         ):
             result = haal_order_ids(date(2026, 4, 13))
         assert result == [349, 371]
@@ -90,33 +101,62 @@ class TestHaalOrderIds:
 </EoCustomLinkResponseOrdersNormalIds>"""
         resp = _mock_resp(leeg_xml)
         with (
-            patch.dict("os.environ", {"MENDRIX_SOAP_URL": "https://test.nl/soap", "MENDRIX_SOAP_USER": "u", "MENDRIX_SOAP_PASS": "p"}),
-            patch("ap06_planner.services.mendrix_service._maak_sessie", return_value=_mock_sessie(resp)),
+            patch.dict(
+                "os.environ",
+                {
+                    "MENDRIX_SOAP_URL": "https://test.nl/soap",
+                    "MENDRIX_SOAP_USER": "u",
+                    "MENDRIX_SOAP_PASS": "p",
+                },
+            ),
+            patch(
+                "ap06_planner.services.mendrix_service._maak_sessie",
+                return_value=_mock_sessie(resp),
+            ),
         ):
             result = haal_order_ids(date(2026, 4, 13))
         assert result == []
 
     def test_geen_url_raises(self):
-        with patch.dict("os.environ", {"MENDRIX_SOAP_URL": ""}):
-            with pytest.raises(ValueError, match="MENDRIX_SOAP_URL"):
-                haal_order_ids(date(2026, 4, 13))
+        with (
+            patch.dict("os.environ", {"MENDRIX_SOAP_URL": ""}),
+            pytest.raises(ValueError, match="MENDRIX_SOAP_URL"),
+        ):
+            haal_order_ids(date(2026, 4, 13))
 
     def test_http_fout(self):
         fout_resp = MagicMock()
         fout_resp.raise_for_status.side_effect = Exception("HTTP 500")
         with (
-            patch.dict("os.environ", {"MENDRIX_SOAP_URL": "https://test.nl/soap", "MENDRIX_SOAP_USER": "u", "MENDRIX_SOAP_PASS": "p"}),
-            patch("ap06_planner.services.mendrix_service._maak_sessie", return_value=_mock_sessie(fout_resp)),
+            patch.dict(
+                "os.environ",
+                {
+                    "MENDRIX_SOAP_URL": "https://test.nl/soap",
+                    "MENDRIX_SOAP_USER": "u",
+                    "MENDRIX_SOAP_PASS": "p",
+                },
+            ),
+            patch(
+                "ap06_planner.services.mendrix_service._maak_sessie",
+                return_value=_mock_sessie(fout_resp),
+            ),
+            pytest.raises(Exception, match="HTTP 500"),
         ):
-            with pytest.raises(Exception, match="HTTP 500"):
-                haal_order_ids(date(2026, 4, 13))
+            haal_order_ids(date(2026, 4, 13))
 
     def test_soap_action_header_correct(self):
         ids_xml = "<EoCustomLinkResponseOrdersNormalIds><Data><_TEoListBase_Items/></Data></EoCustomLinkResponseOrdersNormalIds>"
         resp = _mock_resp(ids_xml)
         mock_s = _mock_sessie(resp)
         with (
-            patch.dict("os.environ", {"MENDRIX_SOAP_URL": "https://test.nl/soap", "MENDRIX_SOAP_USER": "u", "MENDRIX_SOAP_PASS": "p"}),
+            patch.dict(
+                "os.environ",
+                {
+                    "MENDRIX_SOAP_URL": "https://test.nl/soap",
+                    "MENDRIX_SOAP_USER": "u",
+                    "MENDRIX_SOAP_PASS": "p",
+                },
+            ),
             patch("ap06_planner.services.mendrix_service._maak_sessie", return_value=mock_s),
         ):
             haal_order_ids(date(2026, 4, 13))
@@ -131,11 +171,23 @@ class TestHaalOrdersDebug:
         assert result == ""
 
     def test_succes(self):
-        order_xml = "<EoCustomLinkResponseOrdersNormal><Data>...</Data></EoCustomLinkResponseOrdersNormal>"
+        order_xml = (
+            "<EoCustomLinkResponseOrdersNormal><Data>...</Data></EoCustomLinkResponseOrdersNormal>"
+        )
         resp = _mock_resp(order_xml)
         with (
-            patch.dict("os.environ", {"MENDRIX_SOAP_URL": "https://test.nl/soap", "MENDRIX_SOAP_USER": "u", "MENDRIX_SOAP_PASS": "p"}),
-            patch("ap06_planner.services.mendrix_service._maak_sessie", return_value=_mock_sessie(resp)),
+            patch.dict(
+                "os.environ",
+                {
+                    "MENDRIX_SOAP_URL": "https://test.nl/soap",
+                    "MENDRIX_SOAP_USER": "u",
+                    "MENDRIX_SOAP_PASS": "p",
+                },
+            ),
+            patch(
+                "ap06_planner.services.mendrix_service._maak_sessie",
+                return_value=_mock_sessie(resp),
+            ),
         ):
             result = haal_orders_debug([349, 371, 391])
         assert "EoCustomLinkResponseOrdersNormal" in result
@@ -145,7 +197,14 @@ class TestHaalOrdersDebug:
         resp = _mock_resp(order_xml)
         mock_s = _mock_sessie(resp)
         with (
-            patch.dict("os.environ", {"MENDRIX_SOAP_URL": "https://test.nl/soap", "MENDRIX_SOAP_USER": "u", "MENDRIX_SOAP_PASS": "p"}),
+            patch.dict(
+                "os.environ",
+                {
+                    "MENDRIX_SOAP_URL": "https://test.nl/soap",
+                    "MENDRIX_SOAP_USER": "u",
+                    "MENDRIX_SOAP_PASS": "p",
+                },
+            ),
             patch("ap06_planner.services.mendrix_service._maak_sessie", return_value=mock_s),
         ):
             haal_orders_debug([1, 2, 3, 4, 5, 6, 7], max_orders=3)
@@ -198,7 +257,11 @@ _ORDER_XML = """<?xml version="1.0"?>
 class TestParseerNamenEnIds:
     def test_parseert_twee_orders(self):
         resultaat = _parseer_namen_en_ids(_ORDER_XML)
-        assert resultaat["AP06/ONAFH - Kathleen Bouvier"] == {"order_id": 1001, "van": "13:00", "tot": "17:00"}
+        assert resultaat["AP06/ONAFH - Kathleen Bouvier"] == {
+            "order_id": 1001,
+            "van": "13:00",
+            "tot": "17:00",
+        }
         assert resultaat["AP06 - Susan Curma"] == {"order_id": 1002, "van": None, "tot": None}
 
     def test_leeg_xml(self):
@@ -231,7 +294,14 @@ class TestHaalMendrixNamenEnIds:
             return mock_s_ids if call_count == 1 else mock_s_orders
 
         with (
-            patch.dict("os.environ", {"MENDRIX_SOAP_URL": "https://test.nl/soap", "MENDRIX_SOAP_USER": "u", "MENDRIX_SOAP_PASS": "p"}),
+            patch.dict(
+                "os.environ",
+                {
+                    "MENDRIX_SOAP_URL": "https://test.nl/soap",
+                    "MENDRIX_SOAP_USER": "u",
+                    "MENDRIX_SOAP_PASS": "p",
+                },
+            ),
             patch("ap06_planner.services.mendrix_service._maak_sessie", side_effect=sessie_factory),
         ):
             resultaat = haal_mendrix_namen_en_ids(date(2026, 6, 5))
@@ -243,8 +313,18 @@ class TestHaalMendrixNamenEnIds:
         leeg = "<EoCustomLinkResponseOrdersNormalIds><Data><_TEoListBase_Items/></Data></EoCustomLinkResponseOrdersNormalIds>"
         resp = _mock_resp(leeg)
         with (
-            patch.dict("os.environ", {"MENDRIX_SOAP_URL": "https://test.nl/soap", "MENDRIX_SOAP_USER": "u", "MENDRIX_SOAP_PASS": "p"}),
-            patch("ap06_planner.services.mendrix_service._maak_sessie", return_value=_mock_sessie(resp)),
+            patch.dict(
+                "os.environ",
+                {
+                    "MENDRIX_SOAP_URL": "https://test.nl/soap",
+                    "MENDRIX_SOAP_USER": "u",
+                    "MENDRIX_SOAP_PASS": "p",
+                },
+            ),
+            patch(
+                "ap06_planner.services.mendrix_service._maak_sessie",
+                return_value=_mock_sessie(resp),
+            ),
         ):
             assert haal_mendrix_namen_en_ids(date(2026, 6, 5)) == {}
 
@@ -273,12 +353,15 @@ class TestWerkdagenVanWeek:
 class TestSslAdapter:
     def test_maak_sessie_geeft_session(self):
         import requests as req
+
         from ap06_planner.services.mendrix_service import _maak_sessie
+
         s = _maak_sessie()
         assert isinstance(s, req.Session)
 
     def test_legacy_adapter_init_poolmanager(self):
         from ap06_planner.services.mendrix_service import _LegacySslAdapter
+
         adapter = _LegacySslAdapter()
         with patch.object(adapter.__class__.__bases__[0], "init_poolmanager"):
             # Aanroepen mag niet crashen
@@ -293,8 +376,18 @@ class TestSoapRequestFallback:
         mock_r.raise_for_status = MagicMock()
         mock_r.text = raw
         with (
-            patch.dict("os.environ", {"MENDRIX_SOAP_URL": "https://test.nl/soap", "MENDRIX_SOAP_USER": "u", "MENDRIX_SOAP_PASS": "p"}),
-            patch("ap06_planner.services.mendrix_service._maak_sessie", return_value=_mock_sessie(mock_r)),
+            patch.dict(
+                "os.environ",
+                {
+                    "MENDRIX_SOAP_URL": "https://test.nl/soap",
+                    "MENDRIX_SOAP_USER": "u",
+                    "MENDRIX_SOAP_PASS": "p",
+                },
+            ),
+            patch(
+                "ap06_planner.services.mendrix_service._maak_sessie",
+                return_value=_mock_sessie(mock_r),
+            ),
         ):
             # haal_order_ids geeft lege lijst terug want <Id> staat er niet in
             result = haal_order_ids(date(2026, 6, 5))
@@ -304,7 +397,9 @@ class TestSoapRequestFallback:
 class TestSimpeleNaamMatch:
     def test_match_met_prefix(self):
         kandidaten = ["AP06/ONAFH - Kathleen Bouvier", "AP06 - Susan Curma"]
-        assert _simpele_naam_match("Kathleen Bouvier", kandidaten) == "AP06/ONAFH - Kathleen Bouvier"
+        assert (
+            _simpele_naam_match("Kathleen Bouvier", kandidaten) == "AP06/ONAFH - Kathleen Bouvier"
+        )
 
     def test_match_zonder_prefix(self):
         kandidaten = ["Kathleen Bouvier", "Susan Curma"]
@@ -357,7 +452,10 @@ class TestZoekMendrixOrder:
     def test_gevonden_via_ai_fallback(self):
         # "PDW" (initialen) heeft geen woord-overlap → simpele match faalt → AI-fallback
         mendrix = {"AP06/ONAFH - Petra de Wit": _INFO_2002}
-        with patch("ap06_planner.services.claude_service.match_naam_mendrix", return_value="AP06/ONAFH - Petra de Wit"):
+        with patch(
+            "ap06_planner.services.claude_service.match_naam_mendrix",
+            return_value="AP06/ONAFH - Petra de Wit",
+        ):
             order_id, naam = zoek_mendrix_order("PDW", mendrix)
         assert order_id == 2002
         assert naam == "AP06/ONAFH - Petra de Wit"
@@ -367,7 +465,10 @@ class TestZoekMendrixOrder:
 
     def test_ai_fallback_exception_wordt_genegeerd(self):
         mendrix = {"AP06/ONAFH - Petra de Wit": _INFO_2002}
-        with patch("ap06_planner.services.claude_service.match_naam_mendrix", side_effect=Exception("API fout")):
+        with patch(
+            "ap06_planner.services.claude_service.match_naam_mendrix",
+            side_effect=Exception("API fout"),
+        ):
             order_id, naam = zoek_mendrix_order("PDW", mendrix)
         assert order_id is None
         assert naam is None
