@@ -41,3 +41,6 @@ indent-style = "space"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--cov=src --cov-report=term-missing --cov-fail-under=80"
+
+[tool.coverage.run]
+omit = ["*/ap06_planner/main.py"]

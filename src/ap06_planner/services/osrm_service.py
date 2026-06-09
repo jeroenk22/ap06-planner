@@ -31,29 +31,20 @@ def _geocodeer_google(adres: str) -> tuple[float, float] | None:
 
     api_key = os.getenv("GOOGLE_MAPS_API_KEY", "")
     if not api_key:
-        print(f"[GEOCODE] Google Maps: geen API-key beschikbaar voor '{adres}'")
         return None
 
     url = "https://maps.googleapis.com/maps/api/geocode/json"
-    params = {
-        "address": adres,
-        "key": api_key,
-        "language": "nl",
-        "region": "nl",
-    }
+    params = {"address": adres, "key": api_key, "language": "nl", "region": "nl"}
     try:
         resp = requests.get(url, params=params, timeout=8)
         data = resp.json()
         if data.get("status") == "OK" and data.get("results"):
             loc = data["results"][0]["geometry"]["location"]
             coords = (float(loc["lng"]), float(loc["lat"]))
-            formatted = data["results"][0].get("formatted_address", adres)
-            print(f"[GEOCODE] Google Maps: '{adres}' → {coords} ({formatted})")
             _google_cache[adres] = coords
             return coords
-        print(f"[GEOCODE] Google Maps: '{adres}' → status={data.get('status')} (geen resultaat)")
-    except Exception as e:
-        print(f"[GEOCODE] Google Maps: '{adres}' → fout: {e}")
+    except Exception:
+        pass
     return None
 
 
@@ -71,14 +62,10 @@ def _geocodeer_nominatim(adres: str) -> tuple[float, float] | None:
         resultaten = resp.json()
         if resultaten:
             coords = (float(resultaten[0]["lon"]), float(resultaten[0]["lat"]))
-            print(
-                f"[GEOCODE] Nominatim: '{adres}' → {coords} ({resultaten[0].get('display_name', '')[:60]})"
-            )
             _nominatim_cache[adres] = coords
             return coords
-        print(f"[GEOCODE] Nominatim: '{adres}' → geen resultaat")
-    except Exception as e:
-        print(f"[GEOCODE] Nominatim: '{adres}' → fout: {e}")
+    except Exception:
+        pass
     return None
 
 
@@ -98,7 +85,6 @@ def _geocodeer(adres: str) -> tuple[str, tuple[float, float]] | None:
     # Koppelteken-fallback: "Heeswijk-Dinther" → "Heeswijk Dinther"
     if "-" in adres:
         alt = adres.replace("-", " ")
-        print(f"[GEOCODE] Koppelteken-fallback: '{adres}' → probeer '{alt}'")
         result = _geocodeer_google(alt)
         if result:
             return "Google Maps", result
@@ -106,7 +92,6 @@ def _geocodeer(adres: str) -> tuple[str, tuple[float, float]] | None:
         if result:
             return "Nominatim", result
 
-    print(f"[GEOCODE] Mislukt voor: '{adres}'")
     return None
 
 
@@ -125,11 +110,8 @@ def _osrm_route(start_lon: float, start_lat: float, eind_lon: float, eind_lat: f
             resp.raise_for_status()
             data = resp.json()
             if data.get("code") == "Ok" and data.get("routes"):
-                minuten = round(data["routes"][0]["duration"] / 60)
-                print(f"[OSRM] Route via {base}: {minuten} min")
-                return minuten
-        except Exception as e:
-            print(f"[OSRM] Fout via {base}: {e}")
+                return round(data["routes"][0]["duration"] / 60)
+        except Exception:
             continue
 
     return None
@@ -183,12 +165,6 @@ def bereken_aankomsttijd(
     """
     eindtijd_str = uiterlijke_tijd or "23:59"
 
-    print(
-        f"\n[AANKOMSTTIJD] Berekening: '{vertrekplaats}' → '{woonplaats}' (postcode: '{woonplaats_postcode}')"
-    )
-    print(f"[AANKOMSTTIJD] Eindtijdvenster: {eind_tijdvenster}, uiterlijke_tijd: {uiterlijke_tijd}")
-
-    # Geocodeer bestemming (monsternemer thuis)
     eind_query = (
         f"{woonplaats_postcode}, {woonplaats}, Nederland"
         if woonplaats_postcode
@@ -200,29 +176,25 @@ def bereken_aankomsttijd(
             f"{eind_tijdvenster} klaar in {vertrekplaats} → {woonplaats}: "
             f"geocoding thuisadres mislukt → gewensttijd {eind_tijdvenster}"
         )
-        print(f"[AANKOMSTTIJD] {debug}")
         return eind_tijdvenster, eindtijd_str, debug
 
     geocodeer_bron, eind_coords = eind_result
 
-    # Geocodeer vertrekplaats
     vertrek_query = (
         f"{vertrekplaats_postcode}, {vertrekplaats}, Nederland"
         if vertrekplaats_postcode
         else f"{vertrekplaats}, Nederland"
     )
-    print(f"[AANKOMSTTIJD] Geocodeer vertrekplaats: '{vertrek_query}'")
     vertrek_result = _geocodeer(vertrek_query)
     if not vertrek_result:
         debug = (
             f"{eind_tijdvenster} klaar in {vertrekplaats} → {woonplaats}: "
             f"geocoding vertrekplaats mislukt → gewensttijd {eind_tijdvenster}"
         )
-        print(f"[AANKOMSTTIJD] {debug}")
         return eind_tijdvenster, eindtijd_str, debug
 
     vertrek_bron, vertrek_coords = vertrek_result
-    bron_label = vertrek_bron  # bron van de plaatsnaam-geocoding
+    bron_label = vertrek_bron
 
     reistijd = _osrm_route(*vertrek_coords, *eind_coords)
 
@@ -231,7 +203,6 @@ def bereken_aankomsttijd(
             f"{eind_tijdvenster} klaar in {vertrekplaats} → {woonplaats}: "
             f"route onbekend (OSRM fout) → gewensttijd {eind_tijdvenster}"
         )
-        print(f"[AANKOMSTTIJD] {debug}")
         return eind_tijdvenster, eindtijd_str, debug
 
     buffer = 15 if reistijd < 60 else 30
@@ -250,6 +221,5 @@ def bereken_aankomsttijd(
         f"{reistijd} min ({drempel} → +{buffer} min buffer) → gewensttijd {aankomsttijd} "
         f"[{bron_label} + OSRM]"
     )
-    print(f"[AANKOMSTTIJD] {debug}")
 
     return aankomsttijd, eindtijd_str, debug

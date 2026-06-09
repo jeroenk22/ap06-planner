@@ -5,6 +5,7 @@ Stadium 1: Upload → JSON debug output per monsternemer.
 
 import json
 import math
+import os
 import re
 from datetime import timedelta
 from io import BytesIO
@@ -20,6 +21,11 @@ from ap06_planner.services.claude_service import (
     verwerk_planningsregels_batch,
 )
 from ap06_planner.services.db_service import haal_alle_monsternemers, zoek_monsternemer
+from ap06_planner.services.mendrix_service import (
+    haal_mendrix_namen_en_ids,
+    werkdagen_van_week,
+    zoek_mendrix_order,
+)
 from ap06_planner.services.nager_service import eerstvolgende_ophaaldag, is_feestdag
 from ap06_planner.services.osrm_service import _geocodeer, bereken_aankomsttijd
 from ap06_planner.utils.date_utils import DAGAFKORTINGEN, format_datum_nl, is_ophaaldag, parse_datum
@@ -61,6 +67,7 @@ def render():
 
     alle_output: list[dict] = []
     tab_resultaten: list[dict] = []
+    mendrix_cache: dict[str, dict[str, int]] = {}  # "dd-mm-yyyy" → {naam: order_id}
 
     st.markdown(
         """
@@ -112,6 +119,7 @@ def render():
             status.write(
                 f"   ↳ Ophaaldata en reistijden bepalen voor {len(per_monsternemer)} monsternemers…"
             )
+
             overgeslagen_namen: list[str] = []
             for naam, naam_regels in per_monsternemer.items():
                 output = _verwerk_monsternemer(
@@ -124,6 +132,29 @@ def render():
                     claude_tv_cache=claude_tv_cache,
                 )
                 if output is not None:
+                    if os.getenv("MENDRIX_SOAP_URL"):
+                        # Haal Mendrix-orders op voor de inplan-datum van deze monsternemer
+                        inplan_str = output.get("inplannen_op", "")
+                        datum_deel = inplan_str.split()[-1] if inplan_str else ""
+                        if datum_deel and datum_deel not in mendrix_cache:
+                            try:
+                                d = parse_datum(datum_deel)
+                                mendrix_cache[datum_deel] = (
+                                    haal_mendrix_namen_en_ids(d) if d else {}
+                                )
+                            except Exception:
+                                mendrix_cache[datum_deel] = {}
+                        mendrix_namen_ids = mendrix_cache.get(datum_deel, {})
+                        order_id, mendrix_naam = zoek_mendrix_order(
+                            output["naam_monsternemer"], mendrix_namen_ids
+                        )
+                        output["mendrix_order_id"] = order_id
+                        output["mendrix_naam"] = mendrix_naam
+                        if mendrix_naam and mendrix_naam in mendrix_namen_ids:
+                            info = mendrix_namen_ids[mendrix_naam]
+                            van = info.get("van")
+                            tot = info.get("tot")
+                            output["mendrix_tijdvenster"] = f"{van}-{tot}" if van and tot else ""
                     alle_output.append(output)
                 else:
                     overgeslagen_namen.append(naam)
@@ -131,6 +162,7 @@ def render():
             tab_resultaten.append(
                 {
                     "datum_str": datum_str,
+                    "datum": datum,
                     "dagnaam": dagnaam,
                     "regels": regels,
                     "per_monsternemer": per_monsternemer,
@@ -145,6 +177,67 @@ def render():
             state="complete",
             expanded=False,
         )
+
+    # Vul cache aan: alle werkdagen (ma-vr) van de weken die inplandatums bevatten
+    if os.getenv("MENDRIX_SOAP_URL") and mendrix_cache:
+        weken: set[tuple[int, int]] = set()
+        for output in alle_output:
+            inplan_str = output.get("inplannen_op", "")
+            datum_deel = inplan_str.split()[-1] if inplan_str else ""
+            if datum_deel:
+                d = parse_datum(datum_deel)
+                if d:
+                    iso = d.isocalendar()
+                    weken.add((iso.year, iso.week))
+
+        for jaar, week in weken:
+            # Bepaal via een willekeurige dag in die week welke werkdagen erbij horen
+            from datetime import date as _date
+
+            ankerdag = _date.fromisocalendar(jaar, week, 1)
+            for dag in werkdagen_van_week(ankerdag):
+                dag_str = dag.strftime("%d-%m-%Y")
+                if dag_str not in mendrix_cache:
+                    try:
+                        mendrix_cache[dag_str] = haal_mendrix_namen_en_ids(dag)
+                    except Exception:
+                        mendrix_cache[dag_str] = {}
+
+    # Tweede pass: check of ❌-monsternemers ergens op een andere datum in dezelfde week staan.
+    # Sorteer op afstand tot de inplandatum zodat de dichtstbijzijnde datum als eerste wordt gekozen.
+    if mendrix_cache:
+        for output in alle_output:
+            if output.get("mendrix_order_id") is not None or "mendrix_order_id" not in output:
+                continue
+            inplan_str = output.get("inplannen_op", "")
+            eigen_datum = inplan_str.split()[-1] if inplan_str else ""
+            eigen_d = parse_datum(eigen_datum) if eigen_datum else None
+            eigen_week = eigen_d.isocalendar()[:2] if eigen_d else None  # (jaar, week)
+
+            # Kandidaat-datums: zelfde week, niet eigen datum, gesorteerd op afstand
+            kandidaat_datums = []
+            for datum_str_cached, namen_ids in mendrix_cache.items():
+                if datum_str_cached == eigen_datum or not namen_ids:
+                    continue
+                d_cached = parse_datum(datum_str_cached)
+                if not d_cached:
+                    continue
+                if eigen_week and d_cached.isocalendar()[:2] != eigen_week:
+                    continue
+                if eigen_d and d_cached <= eigen_d:  # pragma: no cover
+                    continue  # pragma: no cover
+                afstand = (d_cached - eigen_d).days if eigen_d else 0
+                kandidaat_datums.append((afstand, datum_str_cached, namen_ids))
+
+            for _, datum_str_cached, namen_ids in sorted(kandidaat_datums):
+                order_id, mendrix_naam = zoek_mendrix_order(
+                    output["naam_monsternemer"], namen_ids, gebruik_ai_fallback=False
+                )
+                if order_id:
+                    output["mendrix_andere_order_id"] = order_id
+                    output["mendrix_andere_datum"] = datum_str_cached
+                    output["mendrix_andere_naam"] = mendrix_naam
+                    break
 
     for res in tab_resultaten:
         datum_str = res["datum_str"]
@@ -163,6 +256,7 @@ def render():
             )
         with st.expander("🔧 Debug: gedetecteerde kolommen", expanded=False):
             st.json(res["kolommap"])
+
         if res["overgeslagen_namen"]:
             with st.expander(
                 f"⏭️ Overgeslagen ({len(res['overgeslagen_namen'])}) — geen geldige ophaaldagen",
@@ -211,11 +305,34 @@ def render():
             ophaaldagen_str = f"({', '.join(ophaaldagen)})" if ophaaldagen else ""
             naam_label = f"{naam} {ophaaldagen_str}".strip()
 
-            col_naam, col_tijd, col_reden = st.columns([4, 2, 4])
+            mendrix_order_id = rec.get("mendrix_order_id")
+            mendrix_naam = rec.get("mendrix_naam")
+            mendrix_tijdvenster = rec.get("mendrix_tijdvenster", "")
+            mendrix_icon = ""
+            mendrix_tip = ""
+            if "mendrix_order_id" in rec:
+                if mendrix_order_id:
+                    mendrix_icon = "✅"
+                    tv = f" {mendrix_tijdvenster}" if mendrix_tijdvenster else ""
+                    mendrix_tip = f"Order #{mendrix_order_id}{tv} ({mendrix_naam})"
+                elif rec.get("mendrix_andere_order_id"):
+                    mendrix_icon = "⚠️"
+                    mendrix_tip = (
+                        f"Order #{rec['mendrix_andere_order_id']} staat op "
+                        f"{rec['mendrix_andere_datum']} ({rec.get('mendrix_andere_naam', '')})"
+                    )
+                else:
+                    mendrix_icon = "❌"
+                    mendrix_tip = "Nog geen order in Mendrix"
+
+            col_naam, col_tijd, col_mendrix, col_reden = st.columns([4, 2, 2, 4])
             with col_naam:
                 st.write(naam_label)
             with col_tijd:
                 st.write(gewensttijd)
+            with col_mendrix:
+                if mendrix_icon:
+                    st.caption(f"{mendrix_icon} {mendrix_tip}")
             with col_reden:
                 if toon_toelichting:
                     st.caption(toon_toelichting)

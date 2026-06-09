@@ -117,6 +117,9 @@ def verwerk_planningsregels_batch(
     chunk_size = 10
     alle_uniq: list[dict] = []
     tekst_blok = None
+    totaal_input = 0
+    totaal_cache_create = 0
+    totaal_cache_read = 0
     try:
         client = _get_client()
         for i in range(0, len(uniq_regels), chunk_size):
@@ -133,6 +136,10 @@ def verwerk_planningsregels_batch(
                 ],
                 messages=[{"role": "user", "content": json.dumps(chunk, ensure_ascii=False)}],
             )
+            u = message.usage
+            totaal_input += u.input_tokens
+            totaal_cache_create += getattr(u, "cache_creation_input_tokens", 0) or 0
+            totaal_cache_read += getattr(u, "cache_read_input_tokens", 0) or 0
             tekst_blok = next(b for b in message.content if b.type == "text")
             chunk_resultaten = _parse_json(tekst_blok.text)
             if len(chunk_resultaten) != len(chunk):
@@ -141,6 +148,15 @@ def verwerk_planningsregels_batch(
                     f"voor {len(chunk)} invoer-regels (chunk {i // chunk_size + 1})"
                 )
             alle_uniq.extend(chunk_resultaten)
+
+        import sys
+
+        print(
+            f"[Claude batch] {len(uniq_regels)} unieke items ({len(regels)} totaal) | "
+            f"input={totaal_input} cache_create={totaal_cache_create} cache_read={totaal_cache_read} tokens "
+            f"| limit=30K/min",
+            file=sys.stderr,
+        )
 
         # Map terug naar originele volgorde
         resultaten = []
@@ -259,5 +275,54 @@ Regels:
         if resultaat == "GEEN" or resultaat not in bekende_namen:
             return None
         return resultaat
+    except Exception:
+        return None
+
+
+def match_naam_mendrix(
+    zoek_naam: str,
+    kandidaten: list[str],
+) -> str | None:
+    """
+    Gebruik Claude om zoek_naam te matchen met een naam uit de Mendrix-kandidatenlijst.
+    Kandidaten kunnen een prefix bevatten zoals 'AP06/ONAFH -' of 'AP06 -'.
+
+    Returns:
+        De best matchende naam uit kandidaten (exact zoals hij staat), of None.
+    """
+    if not kandidaten:
+        return None
+
+    prompt = f"""Je krijgt een naam en een lijst met namen uit een ritplanningssysteem (Mendrix).
+Zoek welke naam uit de lijst het beste overeenkomt met de gegeven naam.
+Namen in de lijst kunnen een prefix hebben zoals "AP06/ONAFH -" of "AP06 -" — die mag je negeren bij het matchen.
+
+Naam om te matchen: "{zoek_naam}"
+
+Kandidatenlijst:
+{chr(10).join(f"- {n}" for n in kandidaten)}
+
+Antwoord ALLEEN met de exacte naam uit de lijst, of "GEEN" als er geen redelijke match is.
+"""
+
+    try:
+        client = _get_client()
+        message = client.messages.create(
+            model=MODEL,
+            max_tokens=100,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        tekst_blok = next(b for b in message.content if b.type == "text")
+        resultaat = tekst_blok.text.strip()
+        if resultaat == "GEEN":
+            return None
+        # Exacte match
+        if resultaat in kandidaten:
+            return resultaat
+        # Tolerante match: antwoord is substring van een kandidaat of vice versa
+        for k in kandidaten:
+            if resultaat in k or k in resultaat:
+                return k
+        return None
     except Exception:
         return None
