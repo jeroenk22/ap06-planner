@@ -70,7 +70,12 @@ def render():
     file_hash = hashlib.md5(raw_bytes).hexdigest()
     cache_key = f"planning_{file_hash}"
 
+    mendrix_cache_key = f"mendrix_{cache_key}"
+
     if st.session_state.get("_actieve_cache_key") != cache_key:  # pragma: no cover
+        prev = st.session_state.get("_actieve_cache_key")  # pragma: no cover
+        if prev:  # pragma: no cover
+            st.session_state.pop(f"mendrix_{prev}", None)  # pragma: no cover
         st.session_state["_actieve_cache_key"] = cache_key  # pragma: no cover
         st.session_state["mendrix_update_resultaten"] = {}  # pragma: no cover
         st.session_state["mendrix_bijgewerkte_tijden"] = {}  # pragma: no cover
@@ -78,9 +83,6 @@ def render():
     if cache_key in st.session_state:
         alle_output = st.session_state[cache_key]["alle_output"]
         tab_resultaten = st.session_state[cache_key]["tab_resultaten"]
-        mendrix_xml_per_order: dict[int, str] = st.session_state[cache_key].get(
-            "mendrix_xml_per_order", {}
-        )
     else:
         with st.spinner("Bestand inlezen..."):
             bestand_bytes = BytesIO(raw_bytes)
@@ -102,8 +104,6 @@ def render():
 
         alle_output: list[dict] = []
         tab_resultaten: list[dict] = []
-        mendrix_cache: dict[str, dict[str, int]] = {}  # "dd-mm-yyyy" → {naam: order_id}
-        mendrix_xml_per_order: dict[int, str] = {}  # order_id → XML voor update zonder re-fetch
 
         st.markdown(
             """
@@ -168,34 +168,6 @@ def render():
                         claude_tv_cache=claude_tv_cache,
                     )
                     if output is not None:
-                        if os.getenv("MENDRIX_SOAP_URL"):
-                            # Haal Mendrix-orders op voor de inplan-datum van deze monsternemer
-                            inplan_str = output.get("inplannen_op", "")
-                            datum_deel = inplan_str.split()[-1] if inplan_str else ""
-                            if datum_deel and datum_deel not in mendrix_cache:
-                                try:
-                                    d = parse_datum(datum_deel)
-                                    if d:
-                                        namen_ids, order_xmls = haal_mendrix_namen_ids_en_xml(d)
-                                        mendrix_cache[datum_deel] = namen_ids
-                                        mendrix_xml_per_order.update(order_xmls)
-                                    else:
-                                        mendrix_cache[datum_deel] = {}
-                                except Exception:
-                                    mendrix_cache[datum_deel] = {}
-                            mendrix_namen_ids = mendrix_cache.get(datum_deel, {})
-                            order_id, mendrix_naam = zoek_mendrix_order(
-                                output["naam_monsternemer"], mendrix_namen_ids
-                            )
-                            output["mendrix_order_id"] = order_id
-                            output["mendrix_naam"] = mendrix_naam
-                            if mendrix_naam and mendrix_naam in mendrix_namen_ids:
-                                info = mendrix_namen_ids[mendrix_naam]
-                                van = info.get("van")
-                                tot = info.get("tot")
-                                output["mendrix_van"] = van or ""
-                                output["mendrix_tot"] = tot or ""
-                                output["mendrix_tijdvenster"] = f"{van}-{tot}" if van and tot else ""
                         alle_output.append(output)
                     else:
                         overgeslagen_namen.append(naam)
@@ -219,68 +191,9 @@ def render():
                 expanded=False,
             )
 
-        # Vul cache aan: alle werkdagen (ma-vr) van de weken die inplandatums bevatten
-        if os.getenv("MENDRIX_SOAP_URL") and mendrix_cache:
-            weken: set[tuple[int, int]] = set()
-            for output in alle_output:
-                inplan_str = output.get("inplannen_op", "")
-                datum_deel = inplan_str.split()[-1] if inplan_str else ""
-                if datum_deel:
-                    d = parse_datum(datum_deel)
-                    if d:
-                        iso = d.isocalendar()
-                        weken.add((iso.year, iso.week))
-
-            for jaar, week in weken:
-                from datetime import date as _date
-
-                ankerdag = _date.fromisocalendar(jaar, week, 1)
-                for dag in werkdagen_van_week(ankerdag):
-                    dag_str = dag.strftime("%d-%m-%Y")
-                    if dag_str not in mendrix_cache:
-                        try:
-                            mendrix_cache[dag_str] = haal_mendrix_namen_en_ids(dag)
-                        except Exception:
-                            mendrix_cache[dag_str] = {}
-
-        # Tweede pass: check of ❌-monsternemers ergens op een andere datum in dezelfde week staan.
-        if mendrix_cache:
-            for output in alle_output:
-                if output.get("mendrix_order_id") is not None or "mendrix_order_id" not in output:
-                    continue
-                inplan_str = output.get("inplannen_op", "")
-                eigen_datum = inplan_str.split()[-1] if inplan_str else ""
-                eigen_d = parse_datum(eigen_datum) if eigen_datum else None
-                eigen_week = eigen_d.isocalendar()[:2] if eigen_d else None
-
-                kandidaat_datums = []
-                for datum_str_cached, namen_ids in mendrix_cache.items():
-                    if datum_str_cached == eigen_datum or not namen_ids:
-                        continue
-                    d_cached = parse_datum(datum_str_cached)
-                    if not d_cached:
-                        continue
-                    if eigen_week and d_cached.isocalendar()[:2] != eigen_week:
-                        continue
-                    if eigen_d and d_cached <= eigen_d:  # pragma: no cover
-                        continue  # pragma: no cover
-                    afstand = (d_cached - eigen_d).days if eigen_d else 0
-                    kandidaat_datums.append((afstand, datum_str_cached, namen_ids))
-
-                for _, datum_str_cached, namen_ids in sorted(kandidaat_datums):
-                    order_id, mendrix_naam = zoek_mendrix_order(
-                        output["naam_monsternemer"], namen_ids, gebruik_ai_fallback=False
-                    )
-                    if order_id:
-                        output["mendrix_andere_order_id"] = order_id
-                        output["mendrix_andere_datum"] = datum_str_cached
-                        output["mendrix_andere_naam"] = mendrix_naam
-                        break
-
         st.session_state[cache_key] = {
             "alle_output": alle_output,
             "tab_resultaten": tab_resultaten,
-            "mendrix_xml_per_order": mendrix_xml_per_order,
         }
 
     for res in tab_resultaten:
@@ -312,9 +225,105 @@ def render():
                 for n in res["overgeslagen_namen"]:
                     st.write(f"- {n}")
 
+    # Mendrix-pass — altijd vers ophalen (los van xlsx-cache)
+    mendrix_xml_per_order: dict[int, str] = {}
+    if os.getenv("MENDRIX_SOAP_URL"):  # pragma: no cover
+        if mendrix_cache_key not in st.session_state:  # pragma: no cover
+            _mendrix_cache: dict[str, dict] = {}  # pragma: no cover
+            _mendrix_xml: dict[int, str] = {}  # pragma: no cover
+            _mendrix_keys = {  # pragma: no cover
+                "mendrix_order_id", "mendrix_naam", "mendrix_van", "mendrix_tot",
+                "mendrix_tijdvenster", "mendrix_andere_order_id", "mendrix_andere_datum", "mendrix_andere_naam",
+            }
+            for output in alle_output:  # pragma: no cover
+                for k in _mendrix_keys:  # pragma: no cover
+                    output.pop(k, None)  # pragma: no cover
+                inplan_str = output.get("inplannen_op", "")  # pragma: no cover
+                datum_deel = inplan_str.split()[-1] if inplan_str else ""  # pragma: no cover
+                if datum_deel and datum_deel not in _mendrix_cache:  # pragma: no cover
+                    try:  # pragma: no cover
+                        d = parse_datum(datum_deel)  # pragma: no cover
+                        if d:  # pragma: no cover
+                            namen_ids, order_xmls = haal_mendrix_namen_ids_en_xml(d)  # pragma: no cover
+                            _mendrix_cache[datum_deel] = namen_ids  # pragma: no cover
+                            _mendrix_xml.update(order_xmls)  # pragma: no cover
+                        else:  # pragma: no cover
+                            _mendrix_cache[datum_deel] = {}  # pragma: no cover
+                    except Exception:  # pragma: no cover
+                        _mendrix_cache[datum_deel] = {}  # pragma: no cover
+                namen_ids = _mendrix_cache.get(datum_deel, {})  # pragma: no cover
+                order_id, mendrix_naam = zoek_mendrix_order(output["naam_monsternemer"], namen_ids)  # pragma: no cover
+                output["mendrix_order_id"] = order_id  # pragma: no cover
+                output["mendrix_naam"] = mendrix_naam  # pragma: no cover
+                if mendrix_naam and mendrix_naam in namen_ids:  # pragma: no cover
+                    info = namen_ids[mendrix_naam]  # pragma: no cover
+                    van = info.get("van")  # pragma: no cover
+                    tot = info.get("tot")  # pragma: no cover
+                    output["mendrix_van"] = van or ""  # pragma: no cover
+                    output["mendrix_tot"] = tot or ""  # pragma: no cover
+                    output["mendrix_tijdvenster"] = f"{van}-{tot}" if van and tot else ""  # pragma: no cover
+
+            # Vul week-cache aan voor tweede pass
+            weken: set[tuple[int, int]] = set()  # pragma: no cover
+            for output in alle_output:  # pragma: no cover
+                inplan_str = output.get("inplannen_op", "")  # pragma: no cover
+                datum_deel = inplan_str.split()[-1] if inplan_str else ""  # pragma: no cover
+                if datum_deel:  # pragma: no cover
+                    d = parse_datum(datum_deel)  # pragma: no cover
+                    if d:  # pragma: no cover
+                        weken.add(d.isocalendar()[:2])  # pragma: no cover
+            from datetime import date as _date  # pragma: no cover
+            for jaar, week in weken:  # pragma: no cover
+                ankerdag = _date.fromisocalendar(jaar, week, 1)  # pragma: no cover
+                for dag in werkdagen_van_week(ankerdag):  # pragma: no cover
+                    dag_str = dag.strftime("%d-%m-%Y")  # pragma: no cover
+                    if dag_str not in _mendrix_cache:  # pragma: no cover
+                        try:  # pragma: no cover
+                            _mendrix_cache[dag_str] = haal_mendrix_namen_en_ids(dag)  # pragma: no cover
+                        except Exception:  # pragma: no cover
+                            _mendrix_cache[dag_str] = {}  # pragma: no cover
+
+            # Tweede pass: ❌-monsternemers op andere datum in dezelfde week
+            for output in alle_output:  # pragma: no cover
+                if output.get("mendrix_order_id") is not None or "mendrix_order_id" not in output:  # pragma: no cover
+                    continue  # pragma: no cover
+                inplan_str = output.get("inplannen_op", "")  # pragma: no cover
+                eigen_datum = inplan_str.split()[-1] if inplan_str else ""  # pragma: no cover
+                eigen_d = parse_datum(eigen_datum) if eigen_datum else None  # pragma: no cover
+                eigen_week = eigen_d.isocalendar()[:2] if eigen_d else None  # pragma: no cover
+                kandidaat_datums = []  # pragma: no cover
+                for dag_str, namen_ids in _mendrix_cache.items():  # pragma: no cover
+                    if dag_str == eigen_datum or not namen_ids:  # pragma: no cover
+                        continue  # pragma: no cover
+                    d_cached = parse_datum(dag_str)  # pragma: no cover
+                    if not d_cached:  # pragma: no cover
+                        continue  # pragma: no cover
+                    if eigen_week and d_cached.isocalendar()[:2] != eigen_week:  # pragma: no cover
+                        continue  # pragma: no cover
+                    if eigen_d and d_cached <= eigen_d:  # pragma: no cover
+                        continue  # pragma: no cover
+                    kandidaat_datums.append(((d_cached - eigen_d).days if eigen_d else 0, dag_str, namen_ids))  # pragma: no cover
+                for _, dag_str, namen_ids in sorted(kandidaat_datums):  # pragma: no cover
+                    order_id, mendrix_naam = zoek_mendrix_order(output["naam_monsternemer"], namen_ids, gebruik_ai_fallback=False)  # pragma: no cover
+                    if order_id:  # pragma: no cover
+                        output["mendrix_andere_order_id"] = order_id  # pragma: no cover
+                        output["mendrix_andere_datum"] = dag_str  # pragma: no cover
+                        output["mendrix_andere_naam"] = mendrix_naam  # pragma: no cover
+                        break  # pragma: no cover
+
+            st.session_state[mendrix_cache_key] = _mendrix_xml  # pragma: no cover
+
+        mendrix_xml_per_order = st.session_state.get(mendrix_cache_key, {})  # pragma: no cover
+
     # Actuele planning overzicht — gegroepeerd op plandag
     st.divider()
-    st.subheader("📋 Actuele planning")
+    _col_title, _col_btn = st.columns([6, 1])
+    _col_title.subheader("📋 Actuele planning")
+    if os.getenv("MENDRIX_SOAP_URL") and _col_btn.button("🔄 Mendrix", help="Mendrix-orders opnieuw ophalen"):  # pragma: no cover
+        st.session_state.pop(mendrix_cache_key, None)  # pragma: no cover
+        st.session_state["mendrix_update_resultaten"] = {}  # pragma: no cover
+        st.session_state["mendrix_bijgewerkte_tijden"] = {}  # pragma: no cover
+        st.rerun()  # pragma: no cover
 
     if os.getenv("MENDRIX_SOAP_URL") and "mendrix_update_resultaten" not in st.session_state:  # pragma: no cover
         st.session_state.mendrix_update_resultaten = {}  # pragma: no cover
