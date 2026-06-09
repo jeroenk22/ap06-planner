@@ -141,6 +141,61 @@ def haal_orders_debug(order_ids: list[int], max_orders: int = 3) -> str:
     return _haal_orders_xml(order_ids[:max_orders])
 
 
+def _vervang_requested_tijden(xml: str, nieuwe_begin: str, nieuwe_eind: str) -> str:
+    """Vervang DateTimeBegin en DateTimeEnd uitsluitend binnen <Requested> blokken."""
+
+    def _verwerk_blok(m: re.Match) -> str:
+        return re.sub(
+            r"(<DateTimeEnd>[^T<]*T)\d{2}:\d{2}(:\d{2})?([^<]*</DateTimeEnd>)",
+            lambda b: f"{b.group(1)}{nieuwe_eind}:00{b.group(3)}",
+            re.sub(
+                r"(<DateTimeBegin>[^T<]*T)\d{2}:\d{2}(:\d{2})?([^<]*</DateTimeBegin>)",
+                lambda b: f"{b.group(1)}{nieuwe_begin}:00{b.group(3)}",
+                m.group(0),
+            ),
+        )
+
+    return re.sub(r"<Requested\b[^>]*>.*?</Requested>", _verwerk_blok, xml, flags=re.DOTALL)
+
+
+def update_mendrix_tijdvenster(
+    order_id: int, nieuwe_begin: str, nieuwe_eind: str
+) -> tuple[bool, str]:
+    """
+    Update de Requested DateTimeBegin en DateTimeEnd van een Mendrix order.
+    Haalt eerst de huidige XML op, past de tijden aan en stuurt terug.
+    Returns (succes, melding).
+    """
+    try:
+        response_xml = _haal_orders_xml([order_id])
+        if not response_xml:
+            return False, "Geen order XML ontvangen van Mendrix"
+
+        aangepast = _vervang_requested_tijden(response_xml, nieuwe_begin, nieuwe_eind)
+
+        # Response-wrapper omzetten naar Store-wrapper
+        store_xml = re.sub(
+            r"<EoCustomLinkResponseOrdersNormal\b[^>]*>",
+            '<EoCustomLinkStoreOrdersNormal Type="TEoCustomLinkStoreOrdersNormal">',
+            aangepast,
+        )
+        store_xml = store_xml.replace(
+            "</EoCustomLinkResponseOrdersNormal>",
+            "</EoCustomLinkStoreOrdersNormal>",
+        )
+
+        result_xml = _soap_request(store_xml)
+
+        if "srUpdated" in result_xml or "srInserted" in result_xml:
+            return True, f"Order #{order_id} bijgewerkt naar {nieuwe_begin}–{nieuwe_eind}"
+        err_m = re.search(r"<ErrorMessage>(.*?)</ErrorMessage>", result_xml, re.DOTALL)
+        err = err_m.group(1).strip() if err_m else result_xml[:200]
+        return False, f"Mendrix fout: {err}"
+
+    except Exception as e:
+        return False, f"Fout bij bijwerken order #{order_id}: {e}"
+
+
 def _parseer_namen_en_ids(xml: str) -> dict[str, dict]:
     """Extraheer {address_name: {"order_id": int, "van": str|None, "tot": str|None}} uit Mendrix orders XML."""
     resultaat: dict[str, dict] = {}

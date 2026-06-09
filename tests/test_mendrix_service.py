@@ -10,9 +10,11 @@ from ap06_planner.services.mendrix_service import (
     _bouw_soap_envelope,
     _parseer_namen_en_ids,
     _simpele_naam_match,
+    _vervang_requested_tijden,
     haal_mendrix_namen_en_ids,
     haal_order_ids,
     haal_orders_debug,
+    update_mendrix_tijdvenster,
     werkdagen_van_week,
     zoek_mendrix_order,
 )
@@ -472,3 +474,130 @@ class TestZoekMendrixOrder:
             order_id, naam = zoek_mendrix_order("PDW", mendrix)
         assert order_id is None
         assert naam is None
+
+
+_RESPONSE_XML = """<?xml version="1.0"?>
+<EoCustomLinkResponseOrdersNormal Type="TEoCustomLinkResponseOrdersNormal">
+  <Data Type="TEoOrderMxList">
+    <_TEoListBase_Items>
+      <EoOrderMx Type="TEoOrderMx">
+        <Tasks Type="TEoTaskMxList">
+          <_TEoListBase_Items>
+            <EoTaskMx Type="TEoTaskMx">
+              <Planned Type="TEoDateTimeWindow">
+                <DateTimeEnd>2026-06-10T18:00:00+02:00</DateTimeEnd>
+                <DateTimeBegin>2026-06-10T10:00:00+02:00</DateTimeBegin>
+              </Planned>
+              <Requested Type="TEoDateTimeWindow">
+                <DateTimeEnd>2026-06-10T18:00:00+02:00</DateTimeEnd>
+                <DateTimeBegin>2026-06-10T10:00:00+02:00</DateTimeBegin>
+              </Requested>
+            </EoTaskMx>
+          </_TEoListBase_Items>
+        </Tasks>
+      </EoOrderMx>
+    </_TEoListBase_Items>
+  </Data>
+</EoCustomLinkResponseOrdersNormal>"""
+
+
+class TestVervangRequestedTijden:
+    def test_vervangt_begintijd_en_eindtijd(self):
+        result = _vervang_requested_tijden(_RESPONSE_XML, "16:00", "22:30")
+        assert "<DateTimeBegin>2026-06-10T16:00:00+02:00</DateTimeBegin>" in result
+        assert "<DateTimeEnd>2026-06-10T22:30:00+02:00</DateTimeEnd>" in result
+
+    def test_raakt_planned_niet_aan(self):
+        result = _vervang_requested_tijden(_RESPONSE_XML, "16:00", "22:30")
+        # Planned block blijft ongewijzigd
+        assert "<Planned" in result
+        planned_idx = result.index("<Planned")
+        requested_idx = result.index("<Requested")
+        planned_blok = result[planned_idx:requested_idx]
+        assert "T10:00:00" in planned_blok
+
+    def test_behoudt_timezone_offset(self):
+        result = _vervang_requested_tijden(_RESPONSE_XML, "16:00", "22:30")
+        assert "+02:00</DateTimeBegin>" in result
+        assert "+02:00</DateTimeEnd>" in result
+
+    def test_geen_requested_blok_ongewijzigd(self):
+        xml = "<Root><Data>geen requested</Data></Root>"
+        assert _vervang_requested_tijden(xml, "16:00", "22:30") == xml
+
+
+class TestUpdateMendrixTijdvenster:
+    def _mock_sessie_met_response(self, inner_xml: str) -> MagicMock:
+        from html import escape
+
+        resp = MagicMock()
+        resp.raise_for_status = MagicMock()
+        resp.text = f"<soap><AResult>{escape(inner_xml)}</AResult></soap>"
+        sessie = MagicMock()
+        sessie.post.return_value = resp
+        return sessie
+
+    def test_succes(self):
+        store_result = "<EoStoreResultList><EoStoreResult><StoreResult>srUpdated</StoreResult></EoStoreResult></EoStoreResultList>"
+        with (
+            patch.dict(
+                "os.environ",
+                {
+                    "MENDRIX_SOAP_URL": "https://test.nl/soap",
+                    "MENDRIX_SOAP_USER": "u",
+                    "MENDRIX_SOAP_PASS": "p",
+                },
+            ),
+            patch(
+                "ap06_planner.services.mendrix_service._maak_sessie",
+                side_effect=[
+                    self._mock_sessie_met_response(_RESPONSE_XML),
+                    self._mock_sessie_met_response(store_result),
+                ],
+            ),
+        ):
+            succes, melding = update_mendrix_tijdvenster(1001, "16:00", "22:30")
+        assert succes is True
+        assert "1001" in melding
+        assert "16:00" in melding
+
+    def test_fout_response(self):
+        fout_result = "<EoStoreResultList><EoStoreResult><StoreResult>srError</StoreResult><ErrorMessage>Ongeldige data</ErrorMessage></EoStoreResult></EoStoreResultList>"
+        with (
+            patch.dict(
+                "os.environ",
+                {
+                    "MENDRIX_SOAP_URL": "https://test.nl/soap",
+                    "MENDRIX_SOAP_USER": "u",
+                    "MENDRIX_SOAP_PASS": "p",
+                },
+            ),
+            patch(
+                "ap06_planner.services.mendrix_service._maak_sessie",
+                side_effect=[
+                    self._mock_sessie_met_response(_RESPONSE_XML),
+                    self._mock_sessie_met_response(fout_result),
+                ],
+            ),
+        ):
+            succes, melding = update_mendrix_tijdvenster(1001, "16:00", "22:30")
+        assert succes is False
+        assert "Ongeldige data" in melding
+
+    def test_exception_wordt_afgevangen(self):
+        with patch(
+            "ap06_planner.services.mendrix_service._haal_orders_xml",
+            side_effect=Exception("verbinding verbroken"),
+        ):
+            succes, melding = update_mendrix_tijdvenster(1001, "16:00", "22:30")
+        assert succes is False
+        assert "verbinding verbroken" in melding
+
+    def test_lege_xml_response(self):
+        with patch(
+            "ap06_planner.services.mendrix_service._haal_orders_xml",
+            return_value="",
+        ):
+            succes, melding = update_mendrix_tijdvenster(1001, "16:00", "22:30")
+        assert succes is False
+        assert "geen" in melding.lower()

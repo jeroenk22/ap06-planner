@@ -24,6 +24,7 @@ from ap06_planner.services.claude_service import (
 from ap06_planner.services.db_service import haal_alle_monsternemers, zoek_monsternemer
 from ap06_planner.services.mendrix_service import (
     haal_mendrix_namen_en_ids,
+    update_mendrix_tijdvenster,
     werkdagen_van_week,
     zoek_mendrix_order,
 )
@@ -376,6 +377,70 @@ def render():
             with col_reden:
                 if toon_toelichting:
                     st.caption(toon_toelichting)
+
+    # Mendrix tijdvensters bijwerken
+    if os.getenv("MENDRIX_SOAP_URL"):  # pragma: no cover
+        te_bijwerken = []  # pragma: no cover
+        for rec in alle_output:  # pragma: no cover
+            if not rec.get("mendrix_order_id"):  # pragma: no cover
+                continue  # pragma: no cover
+            laatste_tv = rec.get("laatste_tijdvenster")  # pragma: no cover
+            mendrix_van = rec.get("mendrix_van", "")  # pragma: no cover
+            if not (laatste_tv and mendrix_van):  # pragma: no cover
+                continue  # pragma: no cover
+            planning_begin = laatste_tv.split(" - ")[0]  # pragma: no cover
+            if _tijdafwijking_kleur(planning_begin, mendrix_van) == "geel":  # pragma: no cover
+                te_bijwerken.append(  # pragma: no cover
+                    {
+                        "naam": rec["naam_monsternemer"],
+                        "order_id": rec["mendrix_order_id"],
+                        "planning_begin": planning_begin,
+                        "planning_eind": laatste_tv.split(" - ")[-1],
+                        "mendrix_huidig": rec.get("mendrix_tijdvenster", ""),
+                    }
+                )
+
+        if te_bijwerken:  # pragma: no cover
+            st.divider()
+            st.subheader("🔄 Mendrix tijdvensters bijwerken")
+            st.caption(
+                f"{len(te_bijwerken)} order(s) met afwijkend tijdvenster — "
+                "planning uit xlsx wordt leidend."
+            )
+
+            if "mendrix_update_resultaten" not in st.session_state:  # pragma: no cover
+                st.session_state.mendrix_update_resultaten = {}  # pragma: no cover
+
+            col_h1, col_h2, col_h3, col_h4 = st.columns([3, 2, 2, 2])
+            col_h1.caption("Monsternemer")
+            col_h2.caption("Huidig in Mendrix")
+            col_h3.caption("Nieuw (uit xlsx)")
+            col_h4.caption("")
+
+            for item in te_bijwerken:  # pragma: no cover
+                sleutel = f"upd_{item['order_id']}"
+                resultaat = st.session_state.mendrix_update_resultaten.get(sleutel)
+                col1, col2, col3, col4 = st.columns([3, 2, 2, 2])
+                col1.write(item["naam"])
+                col2.write(item["mendrix_huidig"])
+                col3.write(f"{item['planning_begin']}–{item['planning_eind']}")
+                with col4:
+                    if resultaat is None:
+                        if st.button("🔄 Bijwerken", key=sleutel):
+                            succes, melding = update_mendrix_tijdvenster(
+                                item["order_id"],
+                                item["planning_begin"],
+                                item["planning_eind"],
+                            )
+                            st.session_state.mendrix_update_resultaten[sleutel] = (
+                                succes,
+                                melding,
+                            )
+                            st.rerun()
+                    elif resultaat[0]:
+                        st.success("✓ bijgewerkt")
+                    else:
+                        st.error(resultaat[1])
 
     # JSON output ingeklapt onderaan
     st.divider()
