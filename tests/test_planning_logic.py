@@ -899,6 +899,9 @@ class TestRenderEarlyExits:
         mock = MagicMock()
         mock.spinner.return_value.__enter__ = MagicMock(return_value=None)
         mock.spinner.return_value.__exit__ = MagicMock(return_value=False)
+        # session_state.pop() moet None retourneren (lege state) zodat pending-action
+        # code niet per ongeluk wordt uitgevoerd met een truthy MagicMock
+        mock.session_state.pop.side_effect = lambda *args, **kwargs: args[1] if len(args) > 1 else None
         return mock
 
     def test_geen_bestand_geupload(self):

@@ -811,7 +811,7 @@ class TestMaakMendrixOrder:
             maak_mendrix_order(**_MAAK_KWARGS)
         _, kwargs = mock_s.post.call_args
         xml = unescape(kwargs["data"].decode())
-        assert "Voor 22:00 ophalen!" in xml
+        assert "Ophalen vóór 22:00!" in xml
 
     def test_exception_retourneert_false(self):
         with (

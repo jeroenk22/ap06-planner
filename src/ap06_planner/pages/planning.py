@@ -646,6 +646,9 @@ def _verwerk_monsternemer(
     if niet_in_db:
         warnings.append(f"Monsternemer '{naam}' NIET gevonden in database!")
 
+    if monsternemer and monsternemer.sjabloon:
+        return None  # sjabloon-monsternemers niet tonen in het dashboard
+
     # Verzamel alle tijdvensters via Claude-cache (of regex-fallback)
     tijdvensters = []
     geen_tv_regels = []
