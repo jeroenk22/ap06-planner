@@ -26,6 +26,7 @@ from ap06_planner.services.db_service import haal_alle_monsternemers, zoek_monst
 from ap06_planner.services.mendrix_service import (
     haal_mendrix_namen_en_ids,
     haal_mendrix_namen_ids_en_xml,
+    maak_mendrix_order,
     update_mendrix_tijdvenster,
     werkdagen_van_week,
     zoek_mendrix_order,
@@ -447,6 +448,40 @@ def render():
                         st.success("✓ bijgewerkt")  # pragma: no cover
                     else:  # pragma: no cover
                         st.error(resultaat[1])  # pragma: no cover
+                elif mendrix_icon == "❌" and rec.get("adres") and not rec.get("niet_in_database"):  # pragma: no cover
+                    sleutel = f"new_{rec['naam_monsternemer']}_{rec.get('inplannen_op', '')}"  # pragma: no cover
+                    resultaat = st.session_state.mendrix_update_resultaten.get(sleutel)  # pragma: no cover
+                    if resultaat is None:  # pragma: no cover
+                        if st.button("➕ Aanmaken", key=sleutel):  # pragma: no cover
+                            gewensttijd_str = rec.get("gewensttijd") or ""  # pragma: no cover
+                            delen = gewensttijd_str.split(" - ")  # pragma: no cover
+                            inplan_d = parse_datum(rec.get("inplannen_op", "").split()[-1])  # pragma: no cover
+                            if inplan_d and len(delen) == 2:  # pragma: no cover
+                                succes, melding = maak_mendrix_order(  # pragma: no cover
+                                    naam=rec["naam_monsternemer"],
+                                    adres=rec.get("adres") or "",
+                                    postcode=rec.get("postcode") or "",
+                                    woonplaats=rec.get("woonplaats") or "",
+                                    telefoon=rec.get("telefoon"),
+                                    bijzonderheden=rec.get("bijzonderheden_laden"),
+                                    laadinstructie=rec.get("laadinstructie"),
+                                    uiterlijke_plantijd=rec.get("uiterlijke_plantijd"),
+                                    algemene_instructie_ap06=rec.get("algemene_instructie_ap06", ""),
+                                    ophaaldagen=rec.get("standaard_ophaaldagen") or [],
+                                    inplan_datum=inplan_d,
+                                    gewensttijd_begin=delen[0],
+                                    gewensttijd_eind=delen[1],
+                                )
+                            else:  # pragma: no cover
+                                succes, melding = False, "Ongeldige inplandatum of gewensttijd"  # pragma: no cover
+                            st.session_state.mendrix_update_resultaten[sleutel] = (succes, melding)  # pragma: no cover
+                            if succes:  # pragma: no cover
+                                st.session_state.pop(mendrix_cache_key, None)  # pragma: no cover
+                            st.rerun()  # pragma: no cover
+                    elif resultaat[0]:  # pragma: no cover
+                        st.success(f"✓ {resultaat[1]}")  # pragma: no cover
+                    else:  # pragma: no cover
+                        st.error(resultaat[1])  # pragma: no cover
                 elif toon_toelichting:
                     st.caption(toon_toelichting)
 
@@ -747,6 +782,7 @@ def _verwerk_monsternemer(
         "inplannen_toelichting": inplannen_toelichting,
         "laadinstructie": monsternemer.laadinstructie if monsternemer else None,
         "bijzonderheden_laden": monsternemer.bijzonderheden if monsternemer else None,
+        "uiterlijke_plantijd": monsternemer.uiterlijke_plantijd if monsternemer else None,
         "algemene_instructie_ap06": ALGEMENE_INSTRUCTIE_AP06,
         "gewensttijd": f"{gewensttijd_begin} - {gewensttijd_eind}",
         "niet_in_database": niet_in_db,

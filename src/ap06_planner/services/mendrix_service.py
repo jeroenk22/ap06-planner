@@ -1,9 +1,10 @@
 """
-mendrix_service.py — Raadpleeg Mendrix Custom Link via SOAP om bestaande orders op te zoeken.
+mendrix_service.py — Raadpleeg en beheer Mendrix Custom Link orders via SOAP.
 
 Flow:
   1. haal_order_ids(datum) → lijst van order-IDs voor ClientNo 3551 op die dag
   2. haal_orders_debug(order_ids) → ruwe XML-response van de eerste orders (voor veldinspectie)
+  3. maak_mendrix_order(...) → maakt een nieuw LAAD-order aan voor een monsternemer
 """
 
 import os
@@ -371,3 +372,141 @@ def zoek_mendrix_order(
             pass
 
     return None, None
+
+
+_PRODUCT_ID = 58  # Eurofins Agro AP06 product in Mendrix
+_PACKING_NAME = "Mo Eurofins Wageningen BLGG"
+
+
+def maak_mendrix_order(
+    naam: str,
+    adres: str,
+    postcode: str,
+    woonplaats: str,
+    telefoon: str | None,
+    bijzonderheden: str | None,
+    laadinstructie: str | None,
+    uiterlijke_plantijd: str | None,
+    algemene_instructie_ap06: str,
+    ophaaldagen: list[str],
+    inplan_datum: date,
+    gewensttijd_begin: str,
+    gewensttijd_eind: str,
+) -> tuple[bool, str]:
+    """
+    Maakt een nieuw LAAD-order aan in Mendrix voor een monsternemer.
+    Returns (succes, melding). Bij succes bevat de melding het nieuwe order-ID.
+    """
+    try:
+        # Splits adres in straat + huisnummer
+        adres_m = re.match(r"^(.*?)\s+(\d+\S*)$", adres.strip())
+        straat = adres_m.group(1) if adres_m else adres
+        nummer = adres_m.group(2) if adres_m else ""
+
+        # Assembleer instructietekst
+        instructie_regels = ["AP06 monsters ophalen voor Eurofins Wageningen."]
+        if uiterlijke_plantijd:
+            instructie_regels.append(f"Voor {uiterlijke_plantijd} ophalen!")
+        if laadinstructie:
+            instructie_regels.append(laadinstructie)
+        if algemene_instructie_ap06:
+            instructie_regels.append(algemene_instructie_ap06)
+        instructies = "\n".join(instructie_regels)
+
+        ophaaldagen_str = "-".join(ophaaldagen) if ophaaldagen else ""
+        notes = f"ap06 ({ophaaldagen_str})"
+
+        datum_str = inplan_datum.strftime("%Y-%m-%d")
+        begin_dt = f"{datum_str}T{gewensttijd_begin}:00"
+        eind_dt = f"{datum_str}T{gewensttijd_eind}:00"
+        duur_uren, duur_dt = _bereken_duur(gewensttijd_begin, gewensttijd_eind)
+
+        inner_xml = f"""<?xml version="1.0" encoding="windows-1252"?>
+<EoCustomLinkStoreOrdersNormal Type="TEoCustomLinkStoreOrdersNormal">
+  <Data Type="TEoOrderMxList">
+    <_TEoListBase_Items>
+      <EoOrderMx Type="TEoOrderMx">
+        <OrderId Type="TEoKeyIntInfraMx"><Id>-1000</Id></OrderId>
+        <ClientId Type="TEoKeyIntInfraMx"><Id>{_MENDRIX_CLIENT_NO}</Id></ClientId>
+        <Confirmed>False</Confirmed>
+        <Notes>{escape(notes)}</Notes>
+        <ProductId Type="TEoKeyIntInfraMx"><Id>{_PRODUCT_ID}</Id></ProductId>
+        <ProductIdAutomaticArticles>True</ProductIdAutomaticArticles>
+        <Goods Type="TEoGoodMxList">
+          <_TEoListBase_Items>
+            <EoGoodMx Type="EoGoodMx">
+              <GoodId Type="TEoKeyIntInfraMx"><Id>-1</Id></GoodId>
+              <Amount>1</Amount>
+              <Packing Type="TEoPackingMx">
+                <Name>{escape(_PACKING_NAME)}</Name>
+                <Amount>0.0</Amount>
+              </Packing>
+            </EoGoodMx>
+          </_TEoListBase_Items>
+        </Goods>
+        <Tasks Type="TEoTaskMxList">
+          <_TEoListBase_Items>
+            <EoTaskMx Type="TEoTaskMx">
+              <TaskId Type="TEoKeyIntInfraMx"><Id>-100</Id></TaskId>
+              <Address Type="TEoAddress">
+                <Name>{escape(f"AP06/ONAFH - {naam}")}</Name>
+                <Premise>{escape(bijzonderheden or "")}</Premise>
+                <Street>{escape(straat)}</Street>
+                <Number>{escape(nummer)}</Number>
+                <PostalCode>{escape(postcode)}</PostalCode>
+                <Place>{escape(woonplaats)}</Place>
+                <Country>Nederland</Country>
+                <CountryCode>NL</CountryCode>
+              </Address>
+              <Connectivity Type="TEoConnectivity">
+                <Email/>
+                <Fax/>
+                <Mobile>{escape(telefoon or "")}</Mobile>
+                <Phone/>
+                <Web/>
+              </Connectivity>
+              <Instructions>{escape(instructies)}</Instructions>
+              <OperatorIdAutomatic>True</OperatorIdAutomatic>
+              <Planned Type="TEoDateTimeWindow">
+                <DateTimeEnd>{begin_dt}</DateTimeEnd>
+                <DateTimeBegin>{begin_dt}</DateTimeBegin>
+              </Planned>
+              <Requested Type="TEoDateTimeWindow">
+                <DateTimeBegin>{begin_dt}</DateTimeBegin>
+                <DateTimeEnd>{eind_dt}</DateTimeEnd>
+                <DurationInDateTime>{duur_dt}</DurationInDateTime>
+                <DurationInHours>{duur_uren}</DurationInHours>
+              </Requested>
+              <TaskTypeId Type="TEoKeyIntInfraMx"><Id>1</Id></TaskTypeId>
+            </EoTaskMx>
+          </_TEoListBase_Items>
+        </Tasks>
+        <GoodsToTasks Type="TEoGoodToTaskMxList">
+          <_TEoListBase_Items>
+            <EoGoodToTaskMx Type="TEoGoodToTaskMx">
+              <GoodId Type="TEoKeyIntInfraMx"><Id>-1</Id></GoodId>
+              <TaskId Type="TEoKeyIntInfraMx"><Id>-100</Id></TaskId>
+            </EoGoodToTaskMx>
+          </_TEoListBase_Items>
+        </GoodsToTasks>
+      </EoOrderMx>
+    </_TEoListBase_Items>
+  </Data>
+</EoCustomLinkStoreOrdersNormal>"""
+
+        result_xml = _soap_request(inner_xml)
+
+        if "srInserted" in result_xml:
+            # Zoek het nieuwe order-ID: <Id> staat vóór <IdOld>-1000</IdOld>
+            new_id_m = re.search(
+                r"<Id>(-?\d+)</Id>.*?<IdOld>-1000</IdOld>", result_xml, re.DOTALL
+            )
+            new_id = new_id_m.group(1) if new_id_m else "?"
+            return True, f"Order #{new_id} aangemaakt voor {naam}"
+
+        err_m = re.search(r"<StoreDescription>(.*?)</StoreDescription>", result_xml, re.DOTALL)
+        err = err_m.group(1).strip() if err_m else result_xml[:200]
+        return False, f"Mendrix fout: {err}"
+
+    except Exception as e:
+        return False, f"Fout bij aanmaken order voor {naam}: {e}"

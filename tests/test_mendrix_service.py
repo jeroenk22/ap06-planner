@@ -16,6 +16,7 @@ from ap06_planner.services.mendrix_service import (
     haal_mendrix_namen_en_ids,
     haal_order_ids,
     haal_orders_debug,
+    maak_mendrix_order,
     update_mendrix_tijdvenster,
     werkdagen_van_week,
     zoek_mendrix_order,
@@ -723,3 +724,100 @@ class TestSplitsOrderXml:
 </EoCustomLinkResponseOrdersNormal>"""
         result = _splits_order_xml(xml)
         assert 'Type="TEoCustomLinkResponseOrdersNormal"' in result[7]
+
+
+_INSERTED_XML = """<EoStoreResultList Type="TEoStoreResultList">
+<_TEoListBase_Items>
+<EoStoreResult Type="TEoStoreResult">
+ <Id>9876</Id>
+ <IdOld>-1000</IdOld>
+ <RowsAffected>1</RowsAffected>
+ <StoreDescription></StoreDescription>
+ <StoreResult>srInserted</StoreResult>
+</EoStoreResult>
+</_TEoListBase_Items>
+</EoStoreResultList>"""
+
+_MAAK_KWARGS = {
+    "naam": "Johan van Zoggel",
+    "adres": "Sparrenlaan 5",
+    "postcode": "5491 TC",
+    "woonplaats": "Sint-Oedenrode",
+    "telefoon": "06-12345678",
+    "bijzonderheden": "Bel van tevoren",
+    "laadinstructie": "Monsters liggen in de schuur",
+    "uiterlijke_plantijd": "22:00",
+    "algemene_instructie_ap06": "Papieren invullen",
+    "ophaaldagen": ["ma", "do"],
+    "inplan_datum": date(2026, 6, 11),
+    "gewensttijd_begin": "10:00",
+    "gewensttijd_eind": "23:59",
+}
+
+
+class TestMaakMendrixOrder:
+    def _mock(self, inner_xml: str) -> MagicMock:
+        resp = _mock_resp(inner_xml)
+        return _mock_sessie(resp)
+
+    def test_succes_retourneert_nieuw_order_id(self):
+        with (
+            patch.dict("os.environ", {"MENDRIX_SOAP_URL": "https://test.nl/soap", "MENDRIX_SOAP_USER": "u", "MENDRIX_SOAP_PASS": "p"}),
+            patch("ap06_planner.services.mendrix_service._maak_sessie", return_value=self._mock(_INSERTED_XML)),
+        ):
+            succes, melding = maak_mendrix_order(**_MAAK_KWARGS)
+        assert succes is True
+        assert "9876" in melding
+
+    def test_fout_response_retourneert_false(self):
+        fout_xml = "<EoStoreResultList><EoStoreResult><StoreResult>srError</StoreResult><StoreDescription>Ongeldig veld</StoreDescription></EoStoreResult></EoStoreResultList>"
+        with (
+            patch.dict("os.environ", {"MENDRIX_SOAP_URL": "https://test.nl/soap", "MENDRIX_SOAP_USER": "u", "MENDRIX_SOAP_PASS": "p"}),
+            patch("ap06_planner.services.mendrix_service._maak_sessie", return_value=self._mock(fout_xml)),
+        ):
+            succes, melding = maak_mendrix_order(**_MAAK_KWARGS)
+        assert succes is False
+        assert "Ongeldig veld" in melding
+
+    def test_xml_bevat_naam_met_prefix(self):
+        mock_s = self._mock(_INSERTED_XML)
+        with (
+            patch.dict("os.environ", {"MENDRIX_SOAP_URL": "https://test.nl/soap", "MENDRIX_SOAP_USER": "u", "MENDRIX_SOAP_PASS": "p"}),
+            patch("ap06_planner.services.mendrix_service._maak_sessie", return_value=mock_s),
+        ):
+            maak_mendrix_order(**_MAAK_KWARGS)
+        _, kwargs = mock_s.post.call_args
+        xml = unescape(kwargs["data"].decode())
+        assert "AP06/ONAFH - Johan van Zoggel" in xml
+
+    def test_xml_bevat_tijdvenster(self):
+        mock_s = self._mock(_INSERTED_XML)
+        with (
+            patch.dict("os.environ", {"MENDRIX_SOAP_URL": "https://test.nl/soap", "MENDRIX_SOAP_USER": "u", "MENDRIX_SOAP_PASS": "p"}),
+            patch("ap06_planner.services.mendrix_service._maak_sessie", return_value=mock_s),
+        ):
+            maak_mendrix_order(**_MAAK_KWARGS)
+        _, kwargs = mock_s.post.call_args
+        xml = unescape(kwargs["data"].decode())
+        assert "2026-06-11T10:00:00" in xml
+        assert "2026-06-11T23:59:00" in xml
+
+    def test_xml_bevat_uiterlijke_plantijd_in_instructies(self):
+        mock_s = self._mock(_INSERTED_XML)
+        with (
+            patch.dict("os.environ", {"MENDRIX_SOAP_URL": "https://test.nl/soap", "MENDRIX_SOAP_USER": "u", "MENDRIX_SOAP_PASS": "p"}),
+            patch("ap06_planner.services.mendrix_service._maak_sessie", return_value=mock_s),
+        ):
+            maak_mendrix_order(**_MAAK_KWARGS)
+        _, kwargs = mock_s.post.call_args
+        xml = unescape(kwargs["data"].decode())
+        assert "Voor 22:00 ophalen!" in xml
+
+    def test_exception_retourneert_false(self):
+        with (
+            patch.dict("os.environ", {"MENDRIX_SOAP_URL": "https://test.nl/soap", "MENDRIX_SOAP_USER": "u", "MENDRIX_SOAP_PASS": "p"}),
+            patch("ap06_planner.services.mendrix_service._maak_sessie", side_effect=Exception("timeout")),
+        ):
+            succes, melding = maak_mendrix_order(**_MAAK_KWARGS)
+        assert succes is False
+        assert "timeout" in melding
