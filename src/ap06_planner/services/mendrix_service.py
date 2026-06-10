@@ -406,7 +406,7 @@ def maak_mendrix_order(
         # Assembleer instructietekst
         instructie_regels = ["AP06 monsters ophalen voor Eurofins Wageningen."]
         if uiterlijke_plantijd:
-            instructie_regels.append(f"Voor {uiterlijke_plantijd} ophalen!")
+            instructie_regels.append(f"Ophalen vóór {uiterlijke_plantijd}!")
         if laadinstructie:
             instructie_regels.append(laadinstructie)
         if algemene_instructie_ap06:
@@ -414,7 +414,8 @@ def maak_mendrix_order(
         instructies = "\n".join(instructie_regels)
 
         ophaaldagen_str = "-".join(ophaaldagen) if ophaaldagen else ""
-        notes = f"ap06 ({ophaaldagen_str})"
+        voornaam = naam.split()[0] if naam else naam
+        notes = f"AP06 - Ophaaldagen {voornaam}: {ophaaldagen_str} (order automatisch ingeschoten)"
 
         datum_str = inplan_datum.strftime("%Y-%m-%d")
         begin_dt = f"{datum_str}T{gewensttijd_begin}:00"
@@ -427,6 +428,7 @@ def maak_mendrix_order(
     <_TEoListBase_Items>
       <EoOrderMx Type="TEoOrderMx">
         <OrderId Type="TEoKeyIntInfraMx"><Id>-1000</Id></OrderId>
+        <RelationId Type="TEoKeyIntInfraMx"><Id>{_MENDRIX_CLIENT_NO}</Id></RelationId>
         <ClientId Type="TEoKeyIntInfraMx"><Id>{_MENDRIX_CLIENT_NO}</Id></ClientId>
         <Confirmed>False</Confirmed>
         <Notes>{escape(notes)}</Notes>
@@ -434,9 +436,10 @@ def maak_mendrix_order(
         <ProductIdAutomaticArticles>True</ProductIdAutomaticArticles>
         <Goods Type="TEoGoodMxList">
           <_TEoListBase_Items>
-            <EoGoodMx Type="EoGoodMx">
+            <EoGoodMx Type="TEoGoodMx">
               <GoodId Type="TEoKeyIntInfraMx"><Id>-1</Id></GoodId>
               <Amount>1</Amount>
+              <Parts>1.0</Parts>
               <Packing Type="TEoPackingMx">
                 <Name>{escape(_PACKING_NAME)}</Name>
                 <Amount>0.0</Amount>
