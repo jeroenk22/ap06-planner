@@ -49,3 +49,6 @@ uploads/
 
 # Debug dumps (kunnen persoonsgegevens bevatten)
 *_debug.xml
+
+# Mendrix voorbeeldbestanden (vendor-documentatie, niet in repo)
+docs/examples/

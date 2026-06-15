@@ -7,6 +7,7 @@ Flow:
   3. maak_mendrix_order(...) → maakt een nieuw LAAD-order aan voor een monsternemer
 """
 
+import logging
 import os
 import re
 import ssl
@@ -15,6 +16,8 @@ from html import escape, unescape
 from urllib.parse import urlparse
 
 import requests
+
+_log = logging.getLogger(__name__)
 from requests.adapters import HTTPAdapter
 from urllib3.util.ssl_ import create_urllib3_context
 
@@ -34,13 +37,19 @@ class _LegacySslAdapter(HTTPAdapter):
         super().init_poolmanager(*args, **kwargs)
 
 
+_sessie_cache: requests.Session | None = None
+
+
 def _maak_sessie() -> requests.Session:
+    global _sessie_cache
+    if _sessie_cache is not None:
+        return _sessie_cache
     s = requests.Session()
     url = os.getenv("MENDRIX_SOAP_URL", "")
     parsed = urlparse(url)
-    # Mount alleen op het Mendrix-host, niet op alle https://-verbindingen
     prefix = f"{parsed.scheme}://{parsed.netloc}" if parsed.netloc else "https://"
     s.mount(prefix, _LegacySslAdapter())
+    _sessie_cache = s
     return s
 
 
@@ -309,16 +318,25 @@ def _achternaam(naam_lower: str) -> str | None:
     return next((w for w in reversed(naam_lower.split()) if w not in _TUSSENVOEGSELS), None)
 
 
+def _voornaam(naam_lower: str) -> str | None:
+    """Eerste woord van de naam."""
+    words = naam_lower.split()
+    return words[0] if words else None
+
+
 def _simpele_naam_match(zoek: str, kandidaten: list[str]) -> str | None:
     """
     Probeer zoek te matchen met een van de kandidaten via word-overlap.
     Strips prefixes zoals 'AP06/ONAFH -', 'AP06 -' voor vergelijking.
     Achternamen (laatste niet-tussenvoegsel woord) moeten overeenkomen om
     false positives zoals 'Johan van Zoggel' ↔ 'Johan van Gool' te voorkomen.
+    Voornamen moeten ook overeenkomen als beide vol uitgeschreven zijn (len > 1),
+    om false positives zoals 'Bert Coppens' ↔ 'Piet Coppens' te voorkomen.
     """
     zoek_lower = zoek.lower()
     zoek_woorden = set(zoek_lower.split())
     zoek_ach = _achternaam(zoek_lower)
+    zoek_voor = _voornaam(zoek_lower)
     beste: str | None = None
     beste_score = 0.0
 
@@ -330,6 +348,14 @@ def _simpele_naam_match(zoek: str, kandidaten: list[str]) -> str | None:
             continue
         # Achternamen moeten overeenkomen
         if zoek_ach and _achternaam(kern_lower) != zoek_ach:
+            continue
+        # Voornamen mogen niet conflicteren (beide vol uitgeschreven maar verschillend)
+        kern_voor = _voornaam(kern_lower)
+        if (
+            zoek_voor and kern_voor
+            and len(zoek_voor) > 1 and len(kern_voor) > 1
+            and zoek_voor != kern_voor
+        ):
             continue
         overlap = zoek_woorden & naam_woorden
         score = len(overlap) / max(len(zoek_woorden), len(naam_woorden))
@@ -369,7 +395,7 @@ def zoek_mendrix_order(
             if ai_match and ai_match in mendrix_namen_ids:
                 return mendrix_namen_ids[ai_match]["order_id"], ai_match
         except Exception:
-            pass
+            _log.debug("AI naam-match mislukt voor '%s'", naam, exc_info=True)
 
     return None, None
 

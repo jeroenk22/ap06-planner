@@ -364,6 +364,16 @@ class TestSslAdapter:
         s = _maak_sessie()
         assert isinstance(s, req.Session)
 
+    def test_maak_sessie_cache_hit(self):
+        """Tweede aanroep retourneert exact hetzelfde object (cache hit, line 43)."""
+        import ap06_planner.services.mendrix_service as ms
+        from ap06_planner.services.mendrix_service import _maak_sessie
+
+        ms._sessie_cache = None  # reset voor isolatie
+        s1 = _maak_sessie()
+        s2 = _maak_sessie()
+        assert s1 is s2
+
     def test_legacy_adapter_init_poolmanager(self):
         from ap06_planner.services.mendrix_service import _LegacySslAdapter
 
@@ -433,6 +443,11 @@ class TestSimpeleNaamMatch:
         kandidaten = ["AP06 - ", "AP06 - Susan Curma"]
         resultaat = _simpele_naam_match("Susan Curma", kandidaten)
         assert resultaat == "AP06 - Susan Curma"
+
+    def test_zelfde_achternaam_andere_voornaam_geen_match(self):
+        """Bert Coppens mag NIET matchen op Piet Coppens (line 356: voornaam-conflict continue)."""
+        kandidaten = ["AP06 - Piet Coppens"]
+        assert _simpele_naam_match("Bert Coppens", kandidaten) is None
 
 
 _INFO_1001 = {"order_id": 1001, "van": "13:00", "tot": "17:00"}

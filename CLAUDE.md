@@ -56,6 +56,8 @@ src/ap06_planner/
     mendrix_service.py → Mendrix SOAP Custom Link integratie
 docs/
   Mendrix_soap_customlink_docs.md → ALTIJD raadplegen bij elke wijziging aan mendrix_service.py
+  examples/                       → XML-voorbeeldbestanden Mendrix Custom Link; raadplegen bij
+                                    nieuwe SOAP-calls of bij twijfel over request/response-structuur
   models/
     schemas.py     → Dataklassen (MonsternemeRecord, PlanningRow, etc.)
   utils/

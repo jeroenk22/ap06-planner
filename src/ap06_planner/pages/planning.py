@@ -84,6 +84,7 @@ def render():
     # waarna een rerun start en de SOAP-call hier plaatsvindt, vóór elke rendering.
     _pend_bijw = st.session_state.pop("_pending_bijwerken", None)
     if _pend_bijw:  # pragma: no cover
+        st.toast("⏳ Tijdvenster bijwerken in Mendrix…")
         _succes, _melding = update_mendrix_tijdvenster(
             _pend_bijw["order_id"],
             _pend_bijw["planning_begin"],
@@ -102,6 +103,7 @@ def render():
     if _pend_maak:  # pragma: no cover
         _sleutel = _pend_maak.pop("sleutel")
         _mckey = _pend_maak.pop("mckey")
+        st.toast("⏳ Order aanmaken in Mendrix…")
         _succes, _melding = maak_mendrix_order(**_pend_maak)
         st.session_state.mendrix_update_resultaten[_sleutel] = (_succes, _melding)
         if _succes:
@@ -122,6 +124,10 @@ def render():
         st.session_state["mendrix_bijgewerkte_tijden"] = {}  # pragma: no cover
     st.session_state["_actieve_file_id"] = uploaded.file_id  # pragma: no cover
 
+    if cache_key in st.session_state:
+        _cached = st.session_state[cache_key]
+        if any(r.get("batch_fout") for r in _cached.get("tab_resultaten", [])):
+            del st.session_state[cache_key]
     if cache_key in st.session_state:
         alle_output = st.session_state[cache_key]["alle_output"]
         tab_resultaten = st.session_state[cache_key]["tab_resultaten"]
@@ -233,10 +239,12 @@ def render():
                 expanded=False,
             )
 
-        st.session_state[cache_key] = {
-            "alle_output": alle_output,
-            "tab_resultaten": tab_resultaten,
-        }
+        heeft_batch_fout = any(r.get("batch_fout") for r in tab_resultaten)
+        if not heeft_batch_fout:  # pragma: no cover
+            st.session_state[cache_key] = {
+                "alle_output": alle_output,
+                "tab_resultaten": tab_resultaten,
+            }
 
     for res in tab_resultaten:
         datum_str = res["datum_str"]
@@ -250,9 +258,9 @@ def render():
             f"{len(per_monsternemer)} unieke monsternemers"
         )
         if res["batch_fout"]:
-            st.warning(
-                f"⚠️ Claude batch-verwerking mislukt: {res['batch_fout']} — regex-fallback actief"
-            )
+            st.warning("⚠️ Claude batch-verwerking mislukt — regex-fallback actief")
+            with st.expander("Foutdetails (klik om te openen)", expanded=True):
+                st.code(res["batch_fout"], language=None)
         with st.expander("🔧 Debug: gedetecteerde kolommen", expanded=False):
             st.json(res["kolommap"])
 

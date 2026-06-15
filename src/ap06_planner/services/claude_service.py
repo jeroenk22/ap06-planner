@@ -12,10 +12,14 @@ LETOP: API-calls worden alleen gedaan als de reguliere parsers falen.
 """
 
 import json
+import logging
 import os
 import re
 
 import anthropic
+import httpx
+
+_log = logging.getLogger(__name__)
 
 _MARKDOWN_CODE_BLOCK = re.compile(r"```(?:json)?\s*\n?(.*?)\n?```", re.DOTALL)
 _STRIP_LAD_LOS_NR = re.compile(r"\b(LAD|LOS)\d+\b", re.IGNORECASE)
@@ -40,17 +44,18 @@ def _parse_json(tekst: str):
 
 
 MODEL = "claude-sonnet-4-6"
-_client: anthropic.Anthropic | None = None
 
 
 def _get_client() -> anthropic.Anthropic:
-    global _client
-    if _client is None:
-        api_key = os.getenv("ANTHROPIC_API_KEY")
-        if not api_key:
-            raise ValueError("ANTHROPIC_API_KEY niet gevonden. Voeg toe aan .env bestand.")
-        _client = anthropic.Anthropic(api_key=api_key)
-    return _client
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise ValueError("ANTHROPIC_API_KEY niet gevonden. Voeg toe aan .env bestand.")
+    # trust_env=False: voorkomt WinError 233 op Windows doordat httpx anders
+    # automatisch Windows-systeemproxy's oppikt die mogelijk niet actief zijn.
+    return anthropic.Anthropic(
+        api_key=api_key,
+        http_client=httpx.Client(trust_env=False),
+    )
 
 
 _PLANNINGSREGEL_SYSTEM = """Je analyseert planningsregels uit een AP06 monstername-planning.
@@ -149,13 +154,13 @@ def verwerk_planningsregels_batch(
                 )
             alle_uniq.extend(chunk_resultaten)
 
-        import sys
+        import logging
 
-        print(
-            f"[Claude batch] {len(uniq_regels)} unieke items ({len(regels)} totaal) | "
-            f"input={totaal_input} cache_create={totaal_cache_create} cache_read={totaal_cache_read} tokens "
-            f"| limit=30K/min",
-            file=sys.stderr,
+        logging.getLogger(__name__).debug(
+            "[Claude batch] %d unieke items (%d totaal) | "
+            "input=%d cache_create=%d cache_read=%d tokens | limit=30K/min",
+            len(uniq_regels), len(regels),
+            totaal_input, totaal_cache_create, totaal_cache_read,
         )
 
         # Map terug naar originele volgorde
@@ -170,7 +175,8 @@ def verwerk_planningsregels_batch(
         preview = repr(tekst_blok.text[:300]) if tekst_blok else "geen tekst-blok"
         return None, f"Claude JSON-fout: {e} — respons: {preview}"
     except Exception as e:
-        return None, f"Claude API-fout: {e}"
+        import traceback
+        return None, f"Claude API-fout: {e}\n{traceback.format_exc()}"
 
 
 def analyseer_tijdvenster_met_claude(tekst: str) -> dict | None:
@@ -225,6 +231,7 @@ def interpreteer_wijzigingen_batch(wijzigingen: list[str | None]) -> dict[str, d
         resultaten = _parse_json(tekst_blok.text)
         return dict(zip(uniek, resultaten, strict=False))
     except Exception:
+        _log.debug("interpreteer_wijzigingen_batch mislukt", exc_info=True)
         return None
 
 
@@ -302,7 +309,10 @@ Naam om te matchen: "{zoek_naam}"
 Kandidatenlijst:
 {chr(10).join(f"- {n}" for n in kandidaten)}
 
-Antwoord ALLEEN met de exacte naam uit de lijst, of "GEEN" als er geen redelijke match is.
+Regels:
+- Dezelfde achternaam maar een andere voornaam = GEEN match (bijv. "Bert Coppens" ≠ "Piet Coppens")
+- Spellingsvariaties, initialen en tussenvoegsels zijn wel toegestaan
+- Antwoord ALLEEN met de exacte naam uit de lijst, of "GEEN" als er geen redelijke match is.
 """
 
     try:
