@@ -1,13 +1,14 @@
 """
 log_service.py — Centrale logging setup voor AP06 Planner.
 
-Maakt per xlsx-inlezing zes logbestanden aan in de logs/ map:
+Maakt per xlsx-inlezing logbestanden aan in de logs/ map:
   {datum} - planning  - {xlsx}.log  — algemeen planningsproces
   {datum} - mendrix   - {xlsx}.log  — SOAP-interacties met Mendrix
   {datum} - claude    - {xlsx}.log  — Claude API-calls en tokengebruik
   {datum} - osrm      - {xlsx}.log  — geocoding en reistijdberekeningen
-  {datum} - gdrive    - {xlsx}.log  — Google Drive uploads en opruimen
+  {datum} - nager     - {xlsx}.log  — feestdagen API-aanroepen en ophaaldag-logica
   {datum} - textmebot - {xlsx}.log  — WhatsApp berichten via TextMeBot
+  {datum} - gdrive    - {xlsx}.log  — Google Drive uploads en opruimen (uitgeschakeld)
   {datum} - debug     - {xlsx}.json — volledige JSON output (Stadium 1)
 
 Retentie: bestanden ouder dan LOG_RETENTIE_DAGEN worden automatisch verwijderd.
@@ -30,12 +31,14 @@ LOGGER_CLAUDE = "ap06.claude"
 LOGGER_OSRM = "ap06.osrm"
 LOGGER_GDRIVE = "ap06.gdrive"
 LOGGER_TEXTMEBOT = "ap06.textmebot"
+LOGGER_NAGER = "ap06.nager"
 
 _COMPONENT_LOGGERS = {
     "planning": LOGGER_PLANNING,
     "mendrix": LOGGER_MENDRIX,
     "claude": LOGGER_CLAUDE,
     "osrm": LOGGER_OSRM,
+    "nager": LOGGER_NAGER,
     # "gdrive": LOGGER_GDRIVE,  # TODO: terug aanzetten zodra Drive-upload actief is
     "textmebot": LOGGER_TEXTMEBOT,
 }
