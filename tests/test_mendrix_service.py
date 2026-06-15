@@ -16,6 +16,7 @@ from ap06_planner.services.mendrix_service import (
     haal_mendrix_namen_en_ids,
     haal_order_ids,
     haal_orders_debug,
+    maak_mendrix_dummy_order,
     maak_mendrix_order,
     update_mendrix_tijdvenster,
     werkdagen_van_week,
@@ -131,6 +132,7 @@ class TestHaalOrderIds:
 
     def test_http_fout(self):
         fout_resp = MagicMock()
+        fout_resp.status_code = 500
         fout_resp.raise_for_status.side_effect = Exception("HTTP 500")
         with (
             patch.dict(
@@ -388,6 +390,7 @@ class TestSoapRequestFallback:
         """Als geen AResult/return/ExecuteRequestResult tag aanwezig → raw response terug."""
         raw = "<OnbekendElement>data</OnbekendElement>"
         mock_r = MagicMock()
+        mock_r.status_code = 200
         mock_r.raise_for_status = MagicMock()
         mock_r.text = raw
         with (
@@ -580,6 +583,7 @@ class TestUpdateMendrixTijdvenster:
         from html import escape
 
         resp = MagicMock()
+        resp.status_code = 200
         resp.raise_for_status = MagicMock()
         resp.text = f"<soap><AResult>{escape(inner_xml)}</AResult></soap>"
         sessie = MagicMock()
@@ -836,3 +840,152 @@ class TestMaakMendrixOrder:
             succes, melding = maak_mendrix_order(**_MAAK_KWARGS)
         assert succes is False
         assert "timeout" in melding
+
+
+_INSERTED_DUMMY_XML = """<EoStoreResultList Type="TEoStoreResultList">
+<_TEoListBase_Items>
+<EoStoreResult Type="TEoStoreResult">
+ <Id>5555</Id>
+ <IdOld>-1001</IdOld>
+ <RowsAffected>1</RowsAffected>
+ <StoreDescription></StoreDescription>
+ <StoreResult>srInserted</StoreResult>
+</EoStoreResult>
+</_TEoListBase_Items>
+</EoStoreResultList>"""
+
+_DUMMY_KWARGS = {
+    "naam": "Johan van Zoggel",
+    "adres": "Sparrenlaan 5",
+    "postcode": "5491 TC",
+    "woonplaats": "Sint-Oedenrode",
+    "telefoon": "06-12345678",
+    "bijzonderheden": "Bel van tevoren",
+    "inplan_datum": date(2026, 6, 11),
+    "gewensttijd_begin": "10:00",
+    "gewensttijd_eind": "23:59",
+    "aantal_lege_bakken": 3,
+    "ophaaldagen": ["di", "do"],
+}
+
+
+class TestMaakMendrixDummyOrder:
+    def _mock(self, inner_xml: str) -> MagicMock:
+        resp = _mock_resp(inner_xml)
+        return _mock_sessie(resp)
+
+    def test_succes_retourneert_nieuw_order_id(self):
+        with (
+            patch.dict("os.environ", {"MENDRIX_SOAP_URL": "https://test.nl/soap", "MENDRIX_SOAP_USER": "u", "MENDRIX_SOAP_PASS": "p"}),
+            patch("ap06_planner.services.mendrix_service._maak_sessie", return_value=self._mock(_INSERTED_DUMMY_XML)),
+        ):
+            succes, melding = maak_mendrix_dummy_order(**_DUMMY_KWARGS)
+        assert succes is True
+        assert "5555" in melding
+
+    def test_xml_bevat_client_3699(self):
+        mock_s = self._mock(_INSERTED_DUMMY_XML)
+        with (
+            patch.dict("os.environ", {"MENDRIX_SOAP_URL": "https://test.nl/soap", "MENDRIX_SOAP_USER": "u", "MENDRIX_SOAP_PASS": "p"}),
+            patch("ap06_planner.services.mendrix_service._maak_sessie", return_value=mock_s),
+        ):
+            maak_mendrix_dummy_order(**_DUMMY_KWARGS)
+        _, kwargs = mock_s.post.call_args
+        xml = unescape(kwargs["data"].decode())
+        assert "<Id>3699</Id>" in xml
+
+    def test_xml_bevat_product_60(self):
+        mock_s = self._mock(_INSERTED_DUMMY_XML)
+        with (
+            patch.dict("os.environ", {"MENDRIX_SOAP_URL": "https://test.nl/soap", "MENDRIX_SOAP_USER": "u", "MENDRIX_SOAP_PASS": "p"}),
+            patch("ap06_planner.services.mendrix_service._maak_sessie", return_value=mock_s),
+        ):
+            maak_mendrix_dummy_order(**_DUMMY_KWARGS)
+        _, kwargs = mock_s.post.call_args
+        xml = unescape(kwargs["data"].decode())
+        assert "<Id>60</Id>" in xml
+
+    def test_xml_bevat_tasktype_2(self):
+        mock_s = self._mock(_INSERTED_DUMMY_XML)
+        with (
+            patch.dict("os.environ", {"MENDRIX_SOAP_URL": "https://test.nl/soap", "MENDRIX_SOAP_USER": "u", "MENDRIX_SOAP_PASS": "p"}),
+            patch("ap06_planner.services.mendrix_service._maak_sessie", return_value=mock_s),
+        ):
+            maak_mendrix_dummy_order(**_DUMMY_KWARGS)
+        _, kwargs = mock_s.post.call_args
+        xml = unescape(kwargs["data"].decode())
+        assert "<Id>2</Id>" in xml  # TaskTypeId
+
+    def test_xml_bevat_packing_naam(self):
+        mock_s = self._mock(_INSERTED_DUMMY_XML)
+        with (
+            patch.dict("os.environ", {"MENDRIX_SOAP_URL": "https://test.nl/soap", "MENDRIX_SOAP_USER": "u", "MENDRIX_SOAP_PASS": "p"}),
+            patch("ap06_planner.services.mendrix_service._maak_sessie", return_value=mock_s),
+        ):
+            maak_mendrix_dummy_order(**_DUMMY_KWARGS)
+        _, kwargs = mock_s.post.call_args
+        xml = unescape(kwargs["data"].decode())
+        assert "Lichtgrijze mestbak met blauw deksel" in xml
+
+    def test_notes_diversen_bevat_ophaaldagen(self):
+        mock_s = self._mock(_INSERTED_DUMMY_XML)
+        with (
+            patch.dict("os.environ", {"MENDRIX_SOAP_URL": "https://test.nl/soap", "MENDRIX_SOAP_USER": "u", "MENDRIX_SOAP_PASS": "p"}),
+            patch("ap06_planner.services.mendrix_service._maak_sessie", return_value=mock_s),
+        ):
+            maak_mendrix_dummy_order(**_DUMMY_KWARGS)
+        _, kwargs = mock_s.post.call_args
+        xml = unescape(kwargs["data"].decode())
+        assert "AP06 - Ophaaldagen Johan: di-do (order automatisch ingeschoten)" in xml
+
+    def test_instructies_meervoud_bij_meer_dan_een(self):
+        mock_s = self._mock(_INSERTED_DUMMY_XML)
+        with (
+            patch.dict("os.environ", {"MENDRIX_SOAP_URL": "https://test.nl/soap", "MENDRIX_SOAP_USER": "u", "MENDRIX_SOAP_PASS": "p"}),
+            patch("ap06_planner.services.mendrix_service._maak_sessie", return_value=mock_s),
+        ):
+            maak_mendrix_dummy_order(**{**_DUMMY_KWARGS, "aantal_lege_bakken": 3})
+        _, kwargs = mock_s.post.call_args
+        xml = unescape(kwargs["data"].decode())
+        assert "3 Lichtgrijze mestbakken met blauw deksel en AP06 sleutel meenemen!" in xml
+
+    def test_instructies_enkelvoud_bij_een(self):
+        mock_s = self._mock(_INSERTED_DUMMY_XML)
+        with (
+            patch.dict("os.environ", {"MENDRIX_SOAP_URL": "https://test.nl/soap", "MENDRIX_SOAP_USER": "u", "MENDRIX_SOAP_PASS": "p"}),
+            patch("ap06_planner.services.mendrix_service._maak_sessie", return_value=mock_s),
+        ):
+            maak_mendrix_dummy_order(**{**_DUMMY_KWARGS, "aantal_lege_bakken": 1})
+        _, kwargs = mock_s.post.call_args
+        xml = unescape(kwargs["data"].decode())
+        assert "1 Lichtgrijze mestbak met blauw deksel en AP06 sleutel meenemen!" in xml
+
+    def test_xml_bevat_aantal_als_amount(self):
+        mock_s = self._mock(_INSERTED_DUMMY_XML)
+        with (
+            patch.dict("os.environ", {"MENDRIX_SOAP_URL": "https://test.nl/soap", "MENDRIX_SOAP_USER": "u", "MENDRIX_SOAP_PASS": "p"}),
+            patch("ap06_planner.services.mendrix_service._maak_sessie", return_value=mock_s),
+        ):
+            maak_mendrix_dummy_order(**{**_DUMMY_KWARGS, "aantal_lege_bakken": 4})
+        _, kwargs = mock_s.post.call_args
+        xml = unescape(kwargs["data"].decode())
+        assert "<Amount>4</Amount>" in xml
+
+    def test_fout_response_retourneert_false(self):
+        fout_xml = "<EoStoreResultList><EoStoreResult><StoreResult>srError</StoreResult><StoreDescription>Ongeldig veld</StoreDescription></EoStoreResult></EoStoreResultList>"
+        with (
+            patch.dict("os.environ", {"MENDRIX_SOAP_URL": "https://test.nl/soap", "MENDRIX_SOAP_USER": "u", "MENDRIX_SOAP_PASS": "p"}),
+            patch("ap06_planner.services.mendrix_service._maak_sessie", return_value=self._mock(fout_xml)),
+        ):
+            succes, melding = maak_mendrix_dummy_order(**_DUMMY_KWARGS)
+        assert succes is False
+        assert "Ongeldig veld" in melding
+
+    def test_exception_retourneert_false(self):
+        with (
+            patch.dict("os.environ", {"MENDRIX_SOAP_URL": "https://test.nl/soap", "MENDRIX_SOAP_USER": "u", "MENDRIX_SOAP_PASS": "p"}),
+            patch("ap06_planner.services.mendrix_service._maak_sessie", side_effect=Exception("verbinding verbroken")),
+        ):
+            succes, melding = maak_mendrix_dummy_order(**_DUMMY_KWARGS)
+        assert succes is False
+        assert "verbinding verbroken" in melding

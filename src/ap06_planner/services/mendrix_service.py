@@ -16,10 +16,10 @@ from html import escape, unescape
 from urllib.parse import urlparse
 
 import requests
-
-_log = logging.getLogger(__name__)
 from requests.adapters import HTTPAdapter
 from urllib3.util.ssl_ import create_urllib3_context
+
+_log = logging.getLogger("ap06.mendrix")
 
 
 class _LegacySslAdapter(HTTPAdapter):
@@ -56,6 +56,15 @@ def _maak_sessie() -> requests.Session:
 _MENDRIX_CLIENT_NO = 3551
 _SOAP_ACTION = '"urn:UCoSoapDispatcherCustomLink-ICustomLinkSoap#ExecuteRequest"'
 
+# Tijdelijke negatieve IDs die Mendrix signaleren dat een nieuw record aangemaakt moet worden.
+# De response matcht op IdOld om het nieuw toegekende ID terug te vinden.
+_TEMP_ORDER_ID = -1000
+_TEMP_DUMMY_ORDER_ID = -1001
+
+# Delphi/Excel epoch voor tijdduur-velden: Mendrix verwacht tijden als datetime
+# relatief aan 1899-12-30 (de Delphi TDateTime-epoch, dag 0).
+_DELPHI_EPOCH = "1899-12-30"
+
 
 def _bouw_soap_envelope(inner_xml: str) -> str:
     user = os.getenv("MENDRIX_SOAP_USER", "")
@@ -89,15 +98,43 @@ def _soap_request(inner_xml: str) -> str:
 
     envelope = _bouw_soap_envelope(inner_xml)
     sessie = _maak_sessie()
-    resp = sessie.post(
-        url,
-        data=envelope.encode("utf-8"),
-        headers={
-            "Content-Type": "text/xml; charset=utf-8",
-            "SOAPAction": _SOAP_ACTION,
-        },
-        timeout=20,
-    )
+
+    # Log de root-tag van het request (geen credentials, geen body)
+    root_tag_m = re.search(r"<(\w+)\s", inner_xml)
+    root_tag = root_tag_m.group(1) if root_tag_m else "onbekend"
+    _log.debug("SOAP request: %s naar %s\n%s", root_tag, url.split("?")[0], inner_xml)
+
+    try:
+        resp = sessie.post(
+            url,
+            data=envelope.encode("utf-8"),
+            headers={
+                "Content-Type": "text/xml; charset=utf-8",
+                "SOAPAction": _SOAP_ACTION,
+            },
+            timeout=20,
+        )
+    except requests.exceptions.Timeout:
+        _log.warning(
+            "SOAP timeout (>20s) voor %s — controleer of Mendrix bereikbaar is: %s",
+            root_tag, url.split("?")[0],
+        )
+        raise
+    except requests.exceptions.ConnectionError as e:
+        _log.warning(
+            "SOAP verbindingsfout voor %s — controleer MENDRIX_SOAP_URL in .env: %s",
+            root_tag, e,
+        )
+        raise
+
+    if resp.status_code in (401, 403):
+        _log.warning(
+            "SOAP authenticatie mislukt (HTTP %d) — controleer MENDRIX_SOAP_USER en "
+            "MENDRIX_SOAP_PASS in .env", resp.status_code,
+        )
+    elif resp.status_code >= 400:
+        _log.warning("SOAP HTTP-fout %d voor %s", resp.status_code, root_tag)
+
     resp.raise_for_status()
 
     # Pak de inner XML uit de SOAP-wrapper (zit XML-escaped in AResult/return/ExecuteRequestResult)
@@ -105,6 +142,12 @@ def _soap_request(inner_xml: str) -> str:
         m = re.search(rf"<[^>]*{tag}[^>]*>(.*?)</[^>]*{tag}>", resp.text, re.DOTALL)
         if m:
             return unescape(m.group(1))
+
+    _log.warning(
+        "SOAP response bevat geen herkenbaar resultaat-element (AResult/return) — "
+        "controleer of de Mendrix Custom Link versie overeenkomt. Preview: %s",
+        resp.text[:200],
+    )
     return resp.text
 
 
@@ -125,8 +168,9 @@ def haal_order_ids(datum: date) -> list[int]:
 </EoCustomLinkRequestOrdersNormalIds>"""
 
     response_xml = _soap_request(inner_xml)
-    # Pak alle <Id> elementen uit de response
-    return [int(m) for m in re.findall(r"<Id>(\d+)</Id>", response_xml)]
+    ids = [int(m) for m in re.findall(r"<Id>(\d+)</Id>", response_xml)]
+    _log.info("Order-IDs opgehaald voor %s: %d orders gevonden", datum.strftime("%d-%m-%Y"), len(ids))
+    return ids
 
 
 def _haal_orders_xml(order_ids: list[int]) -> str:
@@ -160,7 +204,7 @@ def _bereken_duur(begin: str, eind: str) -> tuple[float, str]:
         minuten += 24 * 60
     uren = minuten / 60.0
     hh, mm = divmod(minuten, 60)
-    return uren, f"1899-12-30T{hh:02d}:{mm:02d}:00+01:00"
+    return uren, f"{_DELPHI_EPOCH}T{hh:02d}:{mm:02d}:00+01:00"
 
 
 def _vervang_requested_tijden(xml: str, nieuwe_begin: str, nieuwe_eind: str) -> str:
@@ -239,14 +283,25 @@ def update_mendrix_tijdvenster(
         )
 
         result_xml = _soap_request(store_xml)
+        _log.debug("Tijdvenster update response order #%s: %s", order_id, result_xml[:500])
 
-        if "srUpdated" in result_xml or "srInserted" in result_xml:
-            return True, f"Order #{order_id} bijgewerkt naar {nieuwe_begin}–{nieuwe_eind}"
+        if "srUpdated" in result_xml:
+            melding = f"Order #{order_id} bijgewerkt naar {nieuwe_begin}–{nieuwe_eind}"
+            _log.info("Tijdvenster bijgewerkt (srUpdated): %s", melding)
+            return True, melding
+        if "srInserted" in result_xml:
+            melding = f"Order #{order_id} ingevoegd naar {nieuwe_begin}–{nieuwe_eind}"
+            _log.info("Tijdvenster ingevoegd (srInserted): %s", melding)
+            return True, melding
         err_m = re.search(r"<ErrorMessage>(.*?)</ErrorMessage>", result_xml, re.DOTALL)
-        err = err_m.group(1).strip() if err_m else result_xml[:200]
+        err = err_m.group(1).strip() if err_m else result_xml[:500]
+        _log.error(
+            "Tijdvenster bijwerken mislukt: order #%s — Mendrix fout: %s", order_id, err,
+        )
         return False, f"Mendrix fout: {err}"
 
     except Exception as e:
+        _log.error("Uitzondering bij bijwerken order #%s: %s", order_id, e, exc_info=True)
         return False, f"Fout bij bijwerken order #{order_id}: {e}"
 
 
@@ -385,6 +440,7 @@ def zoek_mendrix_order(
 
     match = _simpele_naam_match(naam, kandidaten)
     if match:
+        _log.info("%-30s → simpele match op '%s' (order #%s)", naam, match, mendrix_namen_ids[match]["order_id"])
         return mendrix_namen_ids[match]["order_id"], match
 
     if gebruik_ai_fallback:
@@ -393,15 +449,26 @@ def zoek_mendrix_order(
 
             ai_match = match_naam_mendrix(naam, kandidaten)
             if ai_match and ai_match in mendrix_namen_ids:
+                _log.info("%-30s → AI-match op '%s' (order #%s)", naam, ai_match, mendrix_namen_ids[ai_match]["order_id"])
                 return mendrix_namen_ids[ai_match]["order_id"], ai_match
         except Exception:
             _log.debug("AI naam-match mislukt voor '%s'", naam, exc_info=True)
 
+    voorbeeld = ", ".join(f"'{k}'" for k in kandidaten[:5])
+    meer = f" (+ {len(kandidaten) - 5} meer)" if len(kandidaten) > 5 else ""
+    _log.warning(
+        "%-30s → geen match in %d Mendrix-orders. Beschikbare namen: %s%s",
+        naam, len(kandidaten), voorbeeld, meer,
+    )
     return None, None
 
 
 _PRODUCT_ID = 58  # Eurofins Agro AP06 product in Mendrix
 _PACKING_NAME = "Mo Eurofins Wageningen BLGG"
+
+_DUMMY_CLIENT_NO = 3699
+_DUMMY_PRODUCT_ID = 60
+_DUMMY_PACKING_NAME = "Lichtgrijze mestbak met blauw deksel"
 
 
 def maak_mendrix_order(
@@ -453,7 +520,7 @@ def maak_mendrix_order(
   <Data Type="TEoOrderMxList">
     <_TEoListBase_Items>
       <EoOrderMx Type="TEoOrderMx">
-        <OrderId Type="TEoKeyIntInfraMx"><Id>-1000</Id></OrderId>
+        <OrderId Type="TEoKeyIntInfraMx"><Id>{_TEMP_ORDER_ID}</Id></OrderId>
         <RelationId Type="TEoKeyIntInfraMx"><Id>{_MENDRIX_CLIENT_NO}</Id></RelationId>
         <ClientId Type="TEoKeyIntInfraMx"><Id>{_MENDRIX_CLIENT_NO}</Id></ClientId>
         <Confirmed>False</Confirmed>
@@ -524,18 +591,168 @@ def maak_mendrix_order(
 </EoCustomLinkStoreOrdersNormal>"""
 
         result_xml = _soap_request(inner_xml)
+        _log.debug("Laadorder aanmaken response voor %s: %s", naam, result_xml[:500])
 
         if "srInserted" in result_xml:
-            # Zoek het nieuwe order-ID: <Id> staat vóór <IdOld>-1000</IdOld>
             new_id_m = re.search(
-                r"<Id>(-?\d+)</Id>.*?<IdOld>-1000</IdOld>", result_xml, re.DOTALL
+                rf"<Id>(-?\d+)</Id>.*?<IdOld>{_TEMP_ORDER_ID}</IdOld>", result_xml, re.DOTALL
             )
-            new_id = new_id_m.group(1) if new_id_m else "?"
-            return True, f"Order #{new_id} aangemaakt voor {naam}"
+            new_id = new_id_m.group(1) if new_id_m else None
+            if new_id:
+                _log.info("Laadorder aangemaakt (srInserted): %s → order #%s", naam, new_id)
+                return True, f"Order #{new_id} aangemaakt voor {naam}"
+            _log.warning(
+                "Laadorder srInserted maar order-ID niet gevonden in response voor %s — "
+                "controleer handmatig in Mendrix. Response: %s", naam, result_xml[:300],
+            )
+            return True, f"Order aangemaakt voor {naam} (ID onbekend)"
 
         err_m = re.search(r"<StoreDescription>(.*?)</StoreDescription>", result_xml, re.DOTALL)
-        err = err_m.group(1).strip() if err_m else result_xml[:200]
+        err = err_m.group(1).strip() if err_m else result_xml[:500]
+        _log.error("Laadorder aanmaken mislukt: %s — Mendrix fout: %s", naam, err)
         return False, f"Mendrix fout: {err}"
 
     except Exception as e:
+        _log.error("Uitzondering bij aanmaken laadorder voor %s: %s", naam, e, exc_info=True)
         return False, f"Fout bij aanmaken order voor {naam}: {e}"
+
+
+def maak_mendrix_dummy_order(
+    naam: str,
+    adres: str,
+    postcode: str,
+    woonplaats: str,
+    telefoon: str | None,
+    bijzonderheden: str | None,
+    inplan_datum: date,
+    gewensttijd_begin: str,
+    gewensttijd_eind: str,
+    aantal_lege_bakken: int,
+    ophaaldagen: list[str] | None = None,
+) -> tuple[bool, str]:
+    """
+    Maakt een dummy-order (geen tarief) aan in Mendrix voor het meenemen van mestbakken.
+    ClientNo=3699, ProductId=60, TaskType=2. Returns (succes, melding).
+    """
+    try:
+        adres_m = re.match(r"^(.*?)\s+(\d+\S*)$", adres.strip())
+        straat = adres_m.group(1) if adres_m else adres
+        nummer = adres_m.group(2) if adres_m else ""
+
+        voornaam = naam.split()[0] if naam else naam
+        ophaaldagen_str = "-".join(ophaaldagen) if ophaaldagen else ""
+        order_notes = f"AP06 - Ophaaldagen {voornaam}: {ophaaldagen_str} (order automatisch ingeschoten)"
+
+        if aantal_lege_bakken == 1:
+            instructies = f"1 {_DUMMY_PACKING_NAME} en AP06 sleutel meenemen!"
+        else:
+            instructies = f"{aantal_lege_bakken} Lichtgrijze mestbakken met blauw deksel en AP06 sleutel meenemen!"
+
+        datum_str = inplan_datum.strftime("%Y-%m-%d")
+        begin_dt = f"{datum_str}T{gewensttijd_begin}:00"
+        eind_dt = f"{datum_str}T{gewensttijd_eind}:00"
+        duur_uren, duur_dt = _bereken_duur(gewensttijd_begin, gewensttijd_eind)
+
+        inner_xml = f"""<?xml version="1.0" encoding="windows-1252"?>
+<EoCustomLinkStoreOrdersNormal Type="TEoCustomLinkStoreOrdersNormal">
+  <Data Type="TEoOrderMxList">
+    <_TEoListBase_Items>
+      <EoOrderMx Type="TEoOrderMx">
+        <OrderId Type="TEoKeyIntInfraMx"><Id>{_TEMP_DUMMY_ORDER_ID}</Id></OrderId>
+        <RelationId Type="TEoKeyIntInfraMx"><Id>{_DUMMY_CLIENT_NO}</Id></RelationId>
+        <ClientId Type="TEoKeyIntInfraMx"><Id>{_DUMMY_CLIENT_NO}</Id></ClientId>
+        <Confirmed>False</Confirmed>
+        <Notes>{escape(order_notes)}</Notes>
+        <ProductId Type="TEoKeyIntInfraMx"><Id>{_DUMMY_PRODUCT_ID}</Id></ProductId>
+        <ProductIdAutomaticArticles>False</ProductIdAutomaticArticles>
+        <Goods Type="TEoGoodMxList">
+          <_TEoListBase_Items>
+            <EoGoodMx Type="TEoGoodMx">
+              <GoodId Type="TEoKeyIntInfraMx"><Id>-1</Id></GoodId>
+              <Amount>{aantal_lege_bakken}</Amount>
+              <Parts>{float(aantal_lege_bakken)}</Parts>
+              <Packing Type="TEoPackingMx">
+                <Name>{escape(_DUMMY_PACKING_NAME)}</Name>
+                <Amount>0.0</Amount>
+              </Packing>
+            </EoGoodMx>
+          </_TEoListBase_Items>
+        </Goods>
+        <Tasks Type="TEoTaskMxList">
+          <_TEoListBase_Items>
+            <EoTaskMx Type="TEoTaskMx">
+              <TaskId Type="TEoKeyIntInfraMx"><Id>-100</Id></TaskId>
+              <Address Type="TEoAddress">
+                <Name>{escape(f"AP06/ONAFH - {naam}")}</Name>
+                <Premise>{escape(bijzonderheden or "")}</Premise>
+                <Street>{escape(straat)}</Street>
+                <Number>{escape(nummer)}</Number>
+                <PostalCode>{escape(postcode)}</PostalCode>
+                <Place>{escape(woonplaats)}</Place>
+                <Country>Nederland</Country>
+                <CountryCode>NL</CountryCode>
+              </Address>
+              <Connectivity Type="TEoConnectivity">
+                <Email/>
+                <Fax/>
+                <Mobile>{escape(telefoon or "")}</Mobile>
+                <Phone/>
+                <Web/>
+              </Connectivity>
+              <Instructions>{escape(instructies)}</Instructions>
+              <OperatorIdAutomatic>True</OperatorIdAutomatic>
+              <Planned Type="TEoDateTimeWindow">
+                <DateTimeEnd>{begin_dt}</DateTimeEnd>
+                <DateTimeBegin>{begin_dt}</DateTimeBegin>
+              </Planned>
+              <Requested Type="TEoDateTimeWindow">
+                <DateTimeBegin>{begin_dt}</DateTimeBegin>
+                <DateTimeEnd>{eind_dt}</DateTimeEnd>
+                <DurationInDateTime>{duur_dt}</DurationInDateTime>
+                <DurationInHours>{duur_uren}</DurationInHours>
+              </Requested>
+              <TaskTypeId Type="TEoKeyIntInfraMx"><Id>2</Id></TaskTypeId>
+            </EoTaskMx>
+          </_TEoListBase_Items>
+        </Tasks>
+        <GoodsToTasks Type="TEoGoodToTaskMxList">
+          <_TEoListBase_Items>
+            <EoGoodToTaskMx Type="TEoGoodToTaskMx">
+              <GoodId Type="TEoKeyIntInfraMx"><Id>-1</Id></GoodId>
+              <TaskId Type="TEoKeyIntInfraMx"><Id>-100</Id></TaskId>
+            </EoGoodToTaskMx>
+          </_TEoListBase_Items>
+        </GoodsToTasks>
+      </EoOrderMx>
+    </_TEoListBase_Items>
+  </Data>
+</EoCustomLinkStoreOrdersNormal>"""
+
+        result_xml = _soap_request(inner_xml)
+        _log.debug("Dummy order aanmaken response voor %s: %s", naam, result_xml[:500])
+
+        if "srInserted" in result_xml:
+            new_id_m = re.search(
+                rf"<Id>(-?\d+)</Id>.*?<IdOld>{_TEMP_DUMMY_ORDER_ID}</IdOld>", result_xml, re.DOTALL
+            )
+            new_id = new_id_m.group(1) if new_id_m else None
+            if new_id:
+                _log.info(
+                    "Dummy order aangemaakt (srInserted): %s → order #%s (%d mestbak(ken))",
+                    naam, new_id, aantal_lege_bakken,
+                )
+                return True, f"Dummy order #{new_id} aangemaakt voor {naam}"
+            _log.warning(
+                "Dummy order srInserted maar order-ID niet gevonden in response voor %s — "
+                "controleer handmatig in Mendrix. Response: %s", naam, result_xml[:300],
+            )
+            return True, f"Dummy order aangemaakt voor {naam} (ID onbekend)"
+
+        err_m = re.search(r"<StoreDescription>(.*?)</StoreDescription>", result_xml, re.DOTALL)
+        err = err_m.group(1).strip() if err_m else result_xml[:500]
+        _log.error("Dummy order aanmaken mislukt: %s — Mendrix fout: %s", naam, err)
+        return False, f"Mendrix fout (dummy): {err}"
+
+    except Exception as e:
+        _log.error("Uitzondering bij aanmaken dummy order voor %s: %s", naam, e, exc_info=True)
+        return False, f"Fout bij aanmaken dummy order voor {naam}: {e}"

@@ -32,10 +32,10 @@ De app opent automatisch op http://localhost:8501
 
 | Stadium | Status | Beschrijving |
 |---------|--------|--------------|
-| 1 | 🚧 In ontwikkeling | xlsx upload → JSON debug output |
-| 2 | ⏳ Later | MendriX SOAP check op bestaande orders |
-| 3 | ⏳ Later | Automatisch orders aanmaken in MendriX |
-| 4 | ⏳ Later | Volledig automatisch (WhatsApp/mail intake) |
+| 1 | ✅ Afgerond | xlsx upload → JSON debug output per monsternemer |
+| 2 | ✅ Afgerond | Mendrix SOAP check: bestaande orders ophalen en tijden vergelijken |
+| 3 | ✅ Afgerond | Automatisch orders aanmaken in Mendrix voor niet-geplande monsternemers |
+| 4 | 🧪 In test | WhatsApp-samenvatting via TextMeBot na verwerking |
 
 ## Privacy
 De monsternemer-database (`data/ap06.db`) bevat persoonsgegevens en staat

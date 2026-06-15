@@ -1,6 +1,6 @@
 """Datamodellen voor AP06 Planner."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass
@@ -60,34 +60,6 @@ class PlanningRegel:
     klant_raw: str | None  # kolom Klant (beide formaten)
     overgeslagen: bool = False
     reden_overgeslagen: str | None = None
-
-
-@dataclass
-class PlanningOutput:
-    """Volledig verwerkt output-object per monsternemer (JSON output Stadium 1)."""
-
-    dagnaam: str  # "maandag"
-    datum: str  # "13-06-2026"
-    naam_monsternemer: str
-    # Uit monsternemer-database:
-    adres: str | None
-    postcode: str | None
-    woonplaats: str | None
-    telefoon: str | None
-    # Planning-logica:
-    laatste_tijdvenster_plaats: str | None
-    laatste_tijdvenster: str | None  # "07:00 - 18:00"
-    standaard_ophaaldagen: list[str]
-    huidige_dag_is_ophaaldag: bool
-    inplannen_op: str  # bijv. "dinsdag 16-06-2026"
-    inplannen_toelichting: str | None  # bijv. "feestdag omzeild" of None
-    laadinstructie: str | None
-    bijzonderheden_laden: str | None
-    algemene_instructie_ap06: str
-    gewensttijd: str  # "19:45 - 21:30" of "10:00 - 23:59"
-    # Debug:
-    niet_in_database: bool = False  # monsternemer onbekend in SQLite
-    warnings: list[str] = field(default_factory=list)
 
 
 ALGEMENE_INSTRUCTIE_AP06 = (

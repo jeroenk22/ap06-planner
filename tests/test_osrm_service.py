@@ -27,6 +27,7 @@ def leeg_caches():
 
 def _nominatim_resp(lon: str = "5.0", lat: str = "51.0"):
     resp = MagicMock()
+    resp.status_code = 200
     resp.json.return_value = [{"lon": lon, "lat": lat, "display_name": "Testplaats"}]
     resp.raise_for_status.return_value = None
     return resp
@@ -34,6 +35,7 @@ def _nominatim_resp(lon: str = "5.0", lat: str = "51.0"):
 
 def _nominatim_leeg_resp():
     resp = MagicMock()
+    resp.status_code = 200
     resp.json.return_value = []
     resp.raise_for_status.return_value = None
     return resp
@@ -41,6 +43,7 @@ def _nominatim_leeg_resp():
 
 def _google_ok_resp(lng: float = 5.0, lat: float = 51.0):
     resp = MagicMock()
+    resp.status_code = 200
     resp.json.return_value = {
         "status": "OK",
         "results": [
@@ -55,12 +58,14 @@ def _google_ok_resp(lng: float = 5.0, lat: float = 51.0):
 
 def _google_geen_resp():
     resp = MagicMock()
+    resp.status_code = 200
     resp.json.return_value = {"status": "ZERO_RESULTS", "results": []}
     return resp
 
 
 def _osrm_ok_resp(duration_sec: float = 1800):
     resp = MagicMock()
+    resp.status_code = 200
     resp.json.return_value = {"code": "Ok", "routes": [{"duration": duration_sec}]}
     resp.raise_for_status.return_value = None
     return resp
@@ -68,6 +73,7 @@ def _osrm_ok_resp(duration_sec: float = 1800):
 
 def _osrm_fout_resp():
     resp = MagicMock()
+    resp.status_code = 200
     resp.json.return_value = {"code": "NoRoute", "routes": []}
     resp.raise_for_status.return_value = None
     return resp
@@ -105,6 +111,15 @@ class TestGeocodeerNominatim:
         assert r1 is None
         assert r2 is not None
 
+    def test_rate_limit_429_logt_warning(self, caplog):
+        resp = MagicMock()
+        resp.status_code = 429
+        with patch("requests.get", return_value=resp):
+            with caplog.at_level("WARNING", logger="ap06.osrm"):
+                result = _geocodeer_nominatim("Bladel")
+        assert result is None
+        assert any("429" in r.message for r in caplog.records)
+
 
 class TestGeocodeerGoogle:
     def test_succes(self):
@@ -135,6 +150,32 @@ class TestGeocodeerGoogle:
         ):
             result = _geocodeer_google("Bladel")
         assert result is None
+
+    def test_quota_exceeded_logt_warning(self, caplog):
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.json.return_value = {"status": "OVER_QUERY_LIMIT", "results": []}
+        with (
+            patch("os.getenv", return_value="FAKE_KEY"),
+            patch("requests.get", return_value=resp),
+        ):
+            with caplog.at_level("WARNING", logger="ap06.osrm"):
+                result = _geocodeer_google("Bladel")
+        assert result is None
+        assert any("OVER_QUERY_LIMIT" in r.message for r in caplog.records)
+
+    def test_request_denied_logt_warning(self, caplog):
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.json.return_value = {"status": "REQUEST_DENIED", "results": []}
+        with (
+            patch("os.getenv", return_value="FAKE_KEY"),
+            patch("requests.get", return_value=resp),
+        ):
+            with caplog.at_level("WARNING", logger="ap06.osrm"):
+                result = _geocodeer_google("Bladel")
+        assert result is None
+        assert any("REQUEST_DENIED" in r.message for r in caplog.records)
 
     def test_caching(self):
         with (
@@ -246,6 +287,24 @@ class TestOsrmRoute:
             result = _osrm_route(5.0, 51.0, 5.5, 51.5)
         # Geen "Ok" code → geen resultaat van lokaal server, probeert fallback ook
         assert result is None
+
+    def test_rate_limit_429_logt_warning(self, caplog):
+        resp = MagicMock()
+        resp.status_code = 429
+        with patch("requests.get", return_value=resp):
+            with caplog.at_level("WARNING", logger="ap06.osrm"):
+                result = _osrm_route(5.0, 51.0, 5.5, 51.5)
+        assert result is None
+        assert any("429" in r.message for r in caplog.records)
+
+    def test_server_error_500_logt_warning(self, caplog):
+        resp = MagicMock()
+        resp.status_code = 503
+        with patch("requests.get", return_value=resp):
+            with caplog.at_level("WARNING", logger="ap06.osrm"):
+                result = _osrm_route(5.0, 51.0, 5.5, 51.5)
+        assert result is None
+        assert any("503" in r.message for r in caplog.records)
 
 
 class TestBerekenReistijdMinuten:

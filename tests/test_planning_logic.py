@@ -922,11 +922,13 @@ class TestRenderEarlyExits:
 
         st_mock = self._mock_st()
         uploaded_mock = MagicMock()
+        uploaded_mock.name = "test.xlsx"
         uploaded_mock.read.return_value = b""
         st_mock.file_uploader.return_value = uploaded_mock
 
         with (
             patch("ap06_planner.pages.planning.st", st_mock),
+            patch("ap06_planner.pages.planning.initialiseer_logging"),
             patch(
                 "ap06_planner.pages.planning.lees_planningsbestand",
                 side_effect=Exception("xlsx-fout"),

@@ -5,6 +5,7 @@ Stadium 1: Upload → JSON debug output per monsternemer.
 
 import hashlib
 import json
+import logging
 import math
 import os
 import re
@@ -26,14 +27,23 @@ from ap06_planner.services.db_service import haal_alle_monsternemers, zoek_monst
 from ap06_planner.services.mendrix_service import (
     haal_mendrix_namen_en_ids,
     haal_mendrix_namen_ids_en_xml,
+    maak_mendrix_dummy_order,
     maak_mendrix_order,
     update_mendrix_tijdvenster,
     werkdagen_van_week,
     zoek_mendrix_order,
 )
+from ap06_planner.services.log_service import debug_json_pad, initialiseer_logging, sla_xlsx_op
+from ap06_planner.services.textmebot_service import (
+    bereken_alle_groen,
+    bouw_whatsapp_bericht,
+    stuur_whatsapp,
+)
 from ap06_planner.services.nager_service import eerstvolgende_ophaaldag, is_feestdag
 from ap06_planner.services.osrm_service import _geocodeer, bereken_aankomsttijd
 from ap06_planner.utils.date_utils import DAGAFKORTINGEN, format_datum_nl, is_ophaaldag, parse_datum
+
+_log = logging.getLogger("ap06.planning")
 
 _DAGBLOK_RE = re.compile(r"\b(?:dagblok|ochtendblok)\b", re.IGNORECASE)
 
@@ -97,14 +107,35 @@ def render():
                 _pend_bijw["planning_begin"],
                 _pend_bijw["planning_eind"],
             )
+            st.session_state.mendrix_originele_tijden[_pend_bijw["order_id"]] = (
+                _pend_bijw.get("orig_mendrix_van", ""),
+                _pend_bijw.get("orig_mendrix_tot", ""),
+            )
         st.rerun()
 
     _pend_maak = st.session_state.pop("_pending_aanmaak", None)
     if _pend_maak:  # pragma: no cover
         _sleutel = _pend_maak.pop("sleutel")
         _mckey = _pend_maak.pop("mckey")
+        _aantal_bakken = _pend_maak.pop("aantal_lege_bakken", 2)
         st.toast("⏳ Order aanmaken in Mendrix…")
         _succes, _melding = maak_mendrix_order(**_pend_maak)
+        if _succes:
+            _d_succes, _d_melding = maak_mendrix_dummy_order(
+                naam=_pend_maak["naam"],
+                adres=_pend_maak["adres"],
+                postcode=_pend_maak["postcode"],
+                woonplaats=_pend_maak["woonplaats"],
+                telefoon=_pend_maak["telefoon"],
+                bijzonderheden=_pend_maak["bijzonderheden"],
+                inplan_datum=_pend_maak["inplan_datum"],
+                gewensttijd_begin=_pend_maak["gewensttijd_begin"],
+                gewensttijd_eind=_pend_maak["gewensttijd_eind"],
+                aantal_lege_bakken=_aantal_bakken,
+                ophaaldagen=_pend_maak.get("ophaaldagen"),
+            )
+            if not _d_succes:
+                _melding += f" (dummy mislukt: {_d_melding})"
         st.session_state.mendrix_update_resultaten[_sleutel] = (_succes, _melding)
         if _succes:
             st.session_state.pop(_mckey, None)
@@ -117,11 +148,13 @@ def render():
         st.session_state["_actieve_cache_key"] = cache_key  # pragma: no cover
         st.session_state["mendrix_update_resultaten"] = {}  # pragma: no cover
         st.session_state["mendrix_bijgewerkte_tijden"] = {}  # pragma: no cover
+        st.session_state["mendrix_originele_tijden"] = {}  # pragma: no cover
     elif st.session_state.get("_actieve_file_id") != uploaded.file_id:  # pragma: no cover
         # Zelfde bestand opnieuw geüpload → Mendrix-cache wissen zodat status vers is
         st.session_state.pop(mendrix_cache_key, None)  # pragma: no cover
         st.session_state["mendrix_update_resultaten"] = {}  # pragma: no cover
         st.session_state["mendrix_bijgewerkte_tijden"] = {}  # pragma: no cover
+        st.session_state["mendrix_originele_tijden"] = {}  # pragma: no cover
     st.session_state["_actieve_file_id"] = uploaded.file_id  # pragma: no cover
 
     if cache_key in st.session_state:
@@ -132,11 +165,15 @@ def render():
         alle_output = st.session_state[cache_key]["alle_output"]
         tab_resultaten = st.session_state[cache_key]["tab_resultaten"]
     else:
+        initialiseer_logging(uploaded.name)
+        sla_xlsx_op(uploaded.name, raw_bytes)
+        _log.info("Bestand inlezen: %s (%d bytes)", uploaded.name, len(raw_bytes))
         with st.spinner("Bestand inlezen..."):
             bestand_bytes = BytesIO(raw_bytes)
             try:
                 tabbladen = lees_planningsbestand(bestand_bytes)
             except Exception as e:
+                _log.error("Fout bij inlezen xlsx '%s': %s", uploaded.name, e, exc_info=True)
                 st.error(f"Fout bij inlezen xlsx: {e}")
                 return
 
@@ -144,6 +181,7 @@ def render():
             st.warning("Geen geldige plannings-tabbladen gevonden in dit bestand.")
             return
 
+        _log.info("%d tabblad(en) geladen: %s", len(tabbladen), [t["tabblad"] for t in tabbladen])
         st.success(f"✅ {len(tabbladen)} tabblad(en) geladen: {[t['tabblad'] for t in tabbladen]}")
 
         # Laad bekende monsternemers voor naam-matching
@@ -177,6 +215,11 @@ def render():
                     if not r.overgeslagen:
                         per_monsternemer.setdefault(r.monsternemer_naam, []).append(r)
 
+                _log.info(
+                    "Tabblad %d/%d: %s %s — %d monsternemers, %d regels",
+                    i, len(tabbladen), dagnaam, datum_str or "??",
+                    len(per_monsternemer), len(regels),
+                )
                 status.write(
                     f"📅 Tabblad {i}/{len(tabbladen)}: "
                     f"{dagnaam.capitalize()} {datum_str or '??'} "
@@ -196,6 +239,8 @@ def render():
                 if batch_input:
                     status.write(f"   ↳ AI analyseert {len(batch_input)} locaties…")
                     batch_resultaten_lijst, batch_fout = verwerk_planningsregels_batch(batch_input)
+                    if batch_fout:
+                        _log.error("Claude batch-verwerking mislukt voor tabblad %s: %s", datum_str, batch_fout)
                     if not batch_fout and batch_resultaten_lijst:
                         for invoer, uitvoer in zip(batch_input, batch_resultaten_lijst, strict=False):
                             claude_tv_cache[(invoer["locatie"], invoer["wijziging"])] = uitvoer
@@ -233,6 +278,7 @@ def render():
                     }
                 )
 
+            _log.info("Verwerking klaar: %d monsternemers verwerkt", len(alle_output))
             status.update(
                 label=f"✅ Verwerking klaar — {len(alle_output)} monsternemers",
                 state="complete",
@@ -245,6 +291,14 @@ def render():
                 "alle_output": alle_output,
                 "tab_resultaten": tab_resultaten,
             }
+            try:  # pragma: no cover
+                json_pad = debug_json_pad(uploaded.name)  # pragma: no cover
+                json_pad.write_text(  # pragma: no cover
+                    json.dumps(alle_output, indent=2, ensure_ascii=False), encoding="utf-8"
+                )
+                _log.info("Debug JSON opgeslagen: %s", json_pad)  # pragma: no cover
+            except OSError as e:  # pragma: no cover
+                _log.warning("Debug JSON opslaan mislukt: %s", e)  # pragma: no cover
 
     for res in tab_resultaten:
         datum_str = res["datum_str"]
@@ -379,6 +433,7 @@ def render():
     if os.getenv("MENDRIX_SOAP_URL") and "mendrix_update_resultaten" not in st.session_state:  # pragma: no cover
         st.session_state.mendrix_update_resultaten = {}  # pragma: no cover
         st.session_state.mendrix_bijgewerkte_tijden = {}  # pragma: no cover
+        st.session_state.mendrix_originele_tijden = {}  # pragma: no cover
 
     # Groepeer op datum-deel (DD-MM-YYYY) als canonieke sleutel — voorkomt duplicate secties
     # door lichte variaties in inplannen_op (hoofdletters, spaties, dagnaam-format).
@@ -495,6 +550,8 @@ def render():
                                 "planning_begin": bijwerken_data["planning_begin"],
                                 "planning_eind": bijwerken_data["planning_eind"],
                                 "cached_xml": mendrix_xml_per_order.get(bijwerken_data["order_id"]),
+                                "orig_mendrix_van": mendrix_van,
+                                "orig_mendrix_tot": mendrix_tot,
                             }
                     elif resultaat[0]:  # pragma: no cover
                         st.success("✓ bijgewerkt")  # pragma: no cover
@@ -525,6 +582,7 @@ def render():
                                     "inplan_datum": inplan_d,
                                     "gewensttijd_begin": delen[0],
                                     "gewensttijd_eind": delen[1],
+                                    "aantal_lege_bakken": rec.get("aantal_lege_bakken", 2),
                                 }
                             else:  # pragma: no cover
                                 st.session_state.mendrix_update_resultaten[sleutel] = (False, "Ongeldige inplandatum of gewensttijd")  # pragma: no cover
@@ -538,6 +596,50 @@ def render():
     # Deferred rerun: button click sloeg pending actie op → nu pas rerunnen (alle columns gesloten)
     if "_pending_aanmaak" in st.session_state or "_pending_bijwerken" in st.session_state:  # pragma: no cover
         st.rerun()
+
+    # WhatsApp samenvatting
+    _heeft_textmebot = bool(os.getenv("TEXTMEBOT_API_KEY") and os.getenv("TEXTMEBOT_ONTVANGER"))
+    _heeft_mendrix = bool(os.getenv("MENDRIX_SOAP_URL"))
+    if _heeft_textmebot:  # pragma: no cover
+        _mendrix_bijgew = st.session_state.get("mendrix_bijgewerkte_tijden", {})  # pragma: no cover
+        _mendrix_update_res = st.session_state.get("mendrix_update_resultaten", {})  # pragma: no cover
+        _mendrix_orig_tijden = st.session_state.get("mendrix_originele_tijden", {})  # pragma: no cover
+        _wa_sleutel = f"_whatsapp_verstuurd_{cache_key}"  # pragma: no cover
+        if _heeft_mendrix:  # pragma: no cover
+            _alle_groen = (
+                mendrix_cache_key in st.session_state
+                and bereken_alle_groen(
+                    alle_output, _mendrix_bijgew, _mendrix_update_res, _tijdafwijking_kleur
+                )
+            )
+        else:  # pragma: no cover
+            _alle_groen = True  # pragma: no cover
+        st.divider()  # pragma: no cover
+        st.subheader("📱 WhatsApp samenvatting")  # pragma: no cover
+        if _alle_groen:  # pragma: no cover
+            if not st.session_state.get(_wa_sleutel):  # pragma: no cover
+                if st.button("📤 Stuur WhatsApp samenvatting", type="primary"):  # pragma: no cover
+                    # TODO: Google Drive upload hier toevoegen zodra OAuth2 of Workspace beschikbaar is
+                    # from ap06_planner.services.gdrive_service import upload_xlsx as gdrive_upload_xlsx
+                    # _up_ok, _xlsx_url, _up_fout = gdrive_upload_xlsx(raw_bytes, uploaded.name)
+                    _bericht = bouw_whatsapp_bericht(alle_output, _mendrix_bijgew, uploaded.name, mendrix_update_resultaten=_mendrix_update_res, mendrix_originele_tijden=_mendrix_orig_tijden)  # pragma: no cover
+                    _succes, _melding = stuur_whatsapp(_bericht)  # pragma: no cover
+                    if _succes:  # pragma: no cover
+                        st.session_state[_wa_sleutel] = True  # pragma: no cover
+                        st.success("✅ WhatsApp verstuurd!")  # pragma: no cover
+                        st.code(_bericht)  # pragma: no cover
+                    else:  # pragma: no cover
+                        st.error(f"❌ Versturen mislukt: {_melding}")  # pragma: no cover
+            else:  # pragma: no cover
+                st.success("✅ WhatsApp samenvatting al verstuurd voor dit bestand.")  # pragma: no cover
+                if st.button("🔁 Opnieuw versturen"):  # pragma: no cover
+                    st.session_state.pop(_wa_sleutel, None)  # pragma: no cover
+                    st.rerun()  # pragma: no cover
+        else:  # pragma: no cover
+            st.info(  # pragma: no cover
+                "⏳ Wacht tot alle monsternemers een ✅ order hebben "
+                "en alle tijdverschillen bijgewerkt zijn."
+            )
 
     # JSON output ingeklapt onderaan
     st.divider()
@@ -653,6 +755,10 @@ def _verwerk_monsternemer(
     niet_in_db = monsternemer is None
     if niet_in_db:
         warnings.append(f"Monsternemer '{naam}' NIET gevonden in database!")
+        _log.warning(
+            "Monsternemer '%s' niet in database — voeg toe via Beheer of controleer spelling. "
+            "Order wordt niet aangemaakt in Mendrix.", naam,
+        )
 
     if monsternemer and monsternemer.sjabloon:
         return None  # sjabloon-monsternemers niet tonen in het dashboard
@@ -819,6 +925,19 @@ def _verwerk_monsternemer(
             inplannen_op_str = format_datum_nl(volgende)
             inplannen_toelichting = "Monsters van vandaag (geen ophaaldag)"
 
+    naam_log = monsternemer.volledige_naam if monsternemer else naam
+    _log.info(
+        "%-30s → inplannen: %-20s gewensttijd: %s - %s",
+        naam_log,
+        inplannen_op_str or "—",
+        gewensttijd_begin,
+        gewensttijd_eind,
+    )
+    if warnings:
+        for w in warnings:
+            if w.startswith("⚠️"):
+                _log.warning("%-30s | %s", naam_log, w.lstrip("⚠️ "))
+
     return {
         "dagnaam": dagnaam,
         "datum": datum.strftime("%d-%m-%Y") if datum else None,
@@ -843,6 +962,7 @@ def _verwerk_monsternemer(
         "uiterlijke_plantijd": monsternemer.uiterlijke_plantijd if monsternemer else None,
         "algemene_instructie_ap06": ALGEMENE_INSTRUCTIE_AP06,
         "gewensttijd": f"{gewensttijd_begin} - {gewensttijd_eind}",
+        "aantal_lege_bakken": monsternemer.aantal_lege_bakken if monsternemer else 2,
         "niet_in_database": niet_in_db,
         "warnings": warnings,
     }

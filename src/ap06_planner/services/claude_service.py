@@ -15,14 +15,18 @@ import json
 import logging
 import os
 import re
+import traceback
 
 import anthropic
 import httpx
 
-_log = logging.getLogger(__name__)
+_log = logging.getLogger("ap06.claude")
 
 _MARKDOWN_CODE_BLOCK = re.compile(r"```(?:json)?\s*\n?(.*?)\n?```", re.DOTALL)
 _STRIP_LAD_LOS_NR = re.compile(r"\b(LAD|LOS)\d+\b", re.IGNORECASE)
+
+# Voorkom tientallen identieke "API-key ontbreekt" meldingen per run
+_api_key_waarschuwing_gegeven = False
 
 
 def _parse_json(tekst: str):
@@ -126,9 +130,11 @@ def verwerk_planningsregels_batch(
     totaal_cache_create = 0
     totaal_cache_read = 0
     try:
+        _log.info("Batch gestart: %d unieke locaties in chunks van %d", len(uniq_regels), chunk_size)
         client = _get_client()
         for i in range(0, len(uniq_regels), chunk_size):
             chunk = uniq_regels[i : i + chunk_size]
+            _log.debug("Chunk %d/%d: %d items", i // chunk_size + 1, -(-len(uniq_regels) // chunk_size), len(chunk))
             message = client.messages.create(
                 model=MODEL,
                 max_tokens=4096,
@@ -148,17 +154,22 @@ def verwerk_planningsregels_batch(
             tekst_blok = next(b for b in message.content if b.type == "text")
             chunk_resultaten = _parse_json(tekst_blok.text)
             if len(chunk_resultaten) != len(chunk):
-                return None, (
+                melding = (
                     f"Claude retourneerde {len(chunk_resultaten)} resultaten "
                     f"voor {len(chunk)} invoer-regels (chunk {i // chunk_size + 1})"
                 )
+                _log.error(
+                    "Claude count-mismatch: verwacht %d, kreeg %d (chunk %d) — "
+                    "mogelijk hallucineert Claude extra/ontbrekende items. "
+                    "Probeer chunk_size te verkleinen.",
+                    len(chunk), len(chunk_resultaten), i // chunk_size + 1,
+                )
+                return None, melding
             alle_uniq.extend(chunk_resultaten)
 
-        import logging
-
-        logging.getLogger(__name__).debug(
-            "[Claude batch] %d unieke items (%d totaal) | "
-            "input=%d cache_create=%d cache_read=%d tokens | limit=30K/min",
+        _log.info(
+            "Batch klaar: %d unieke items (%d totaal) | "
+            "tokens: input=%d  cache_create=%d  cache_read=%d",
             len(uniq_regels), len(regels),
             totaal_input, totaal_cache_create, totaal_cache_read,
         )
@@ -173,10 +184,20 @@ def verwerk_planningsregels_batch(
 
     except json.JSONDecodeError as e:
         preview = repr(tekst_blok.text[:300]) if tekst_blok else "geen tekst-blok"
-        return None, f"Claude JSON-fout: {e} — respons: {preview}"
+        melding = f"Claude JSON-fout: {e} — respons: {preview}"
+        _log.error(
+            "Claude retourneerde ongeldige JSON — waarschijnlijk onjuist prompt-formaat of "
+            "te lange respons. Controleer chunk-grootte (nu %d). Fout: %s | Preview: %s",
+            chunk_size, e, preview,
+        )
+        return None, melding
     except Exception as e:
-        import traceback
-        return None, f"Claude API-fout: {e}\n{traceback.format_exc()}"
+        melding = f"Claude API-fout: {e}\n{traceback.format_exc()}"
+        _log.error(
+            "Claude API-fout — controleer ANTHROPIC_API_KEY in .env en netwerk. "
+            "Fout: %s", e, exc_info=True,
+        )
+        return None, melding
 
 
 def analyseer_tijdvenster_met_claude(tekst: str) -> dict | None:
@@ -213,6 +234,7 @@ def interpreteer_wijzigingen_batch(wijzigingen: list[str | None]) -> dict[str, d
     uniek = list(dict.fromkeys(w for w in wijzigingen if w))
     if not uniek:
         return {}
+    global _api_key_waarschuwing_gegeven
     try:
         client = _get_client()
         message = client.messages.create(
@@ -230,6 +252,15 @@ def interpreteer_wijzigingen_batch(wijzigingen: list[str | None]) -> dict[str, d
         tekst_blok = next(b for b in message.content if b.type == "text")
         resultaten = _parse_json(tekst_blok.text)
         return dict(zip(uniek, resultaten, strict=False))
+    except ValueError as e:
+        # Ontbrekende API-key: log eenmalig als WARNING, daarna stil
+        if not _api_key_waarschuwing_gegeven:
+            _log.warning(
+                "interpreteer_wijzigingen_batch uitgeschakeld: %s — "
+                "wijzigingen worden via regex verwerkt (minder nauwkeurig).", e,
+            )
+            _api_key_waarschuwing_gegeven = True
+        return None
     except Exception:
         _log.debug("interpreteer_wijzigingen_batch mislukt", exc_info=True)
         return None

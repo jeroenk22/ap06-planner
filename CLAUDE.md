@@ -143,6 +143,13 @@ Bij elke codewijziging altijd controleren:
 - Zijn er tests die niet meer relevant zijn?
 - Zijn er nieuwe tests nodig?
 
+### 6. Foutafhandeling na elke codewijziging
+Bij elke nieuwe functie of wijziging altijd zelf controleren (zonder dat de gebruiker dit hoeft te vragen):
+- Alle externe aanroepen (SOAP, HTTP, DB, bestands-I/O) zitten in een `try/except`
+- Functies die kunnen falen retourneren `(False, melding)` of `None` — nooit een onverwachte exception naar de UI
+- Foutmeldingen zijn informatief (bevatten context, geen ruwe stack traces naar de gebruiker)
+- Nieuwe `except`-blokken loggen met `_log.debug(..., exc_info=True)` of `_log.warning(...)` waar zinvol
+
 ---
 
 ## Security
