@@ -35,6 +35,7 @@ def test_stuur_whatsapp_succes(monkeypatch):
 
 def test_stuur_whatsapp_request_fout(monkeypatch):
     import requests as req_mod
+
     monkeypatch.setenv("TEXTMEBOT_API_KEY", "key123")
     monkeypatch.setenv("TEXTMEBOT_ONTVANGER", "+31612345678")
     with patch(
@@ -118,8 +119,14 @@ def test_bereken_alle_groen_geel_bijgew_tijden():
 # ---------------------------------------------------------------------------
 
 
-def _planning_rec(naam="Jan Jansen", order_id=42, gewensttijd="08:00 - 12:00",
-                  mendrix_van="08:00", mendrix_tot="12:00", inplan="Maandag 16-06-2026"):
+def _planning_rec(
+    naam="Jan Jansen",
+    order_id=42,
+    gewensttijd="08:00 - 12:00",
+    mendrix_van="08:00",
+    mendrix_tot="12:00",
+    inplan="Maandag 16-06-2026",
+):
     return {
         "naam_monsternemer": naam,
         "inplannen_op": inplan,
@@ -196,8 +203,9 @@ def test_bouw_bericht_dedupliceert_zelfde_naam_en_order():
 
 
 def test_bouw_bericht_bijgewerkt_toont_originele_tijd():
-    rec = _planning_rec(order_id=10, gewensttijd="17:45 - 23:59",
-                        mendrix_van="17:45", mendrix_tot="23:59")  # al ververst in Mendrix
+    rec = _planning_rec(
+        order_id=10, gewensttijd="17:45 - 23:59", mendrix_van="17:45", mendrix_tot="23:59"
+    )  # al ververst in Mendrix
     bijgew = {10: ("17:45", "23:59")}
     orig = {10: ("13:00", "20:14")}  # opgeslagen vóór de refresh
     bericht = bouw_whatsapp_bericht([rec], bijgew, "w.xlsx", mendrix_originele_tijden=orig)
@@ -206,16 +214,16 @@ def test_bouw_bericht_bijgewerkt_toont_originele_tijd():
 
 
 def test_bouw_bericht_bijgewerkt_fallback_zonder_originele_tijd():
-    rec = _planning_rec(order_id=10, gewensttijd="17:45 - 23:59",
-                        mendrix_van="13:00", mendrix_tot="20:14")
+    rec = _planning_rec(
+        order_id=10, gewensttijd="17:45 - 23:59", mendrix_van="13:00", mendrix_tot="20:14"
+    )
     bijgew = {10: ("17:45", "23:59")}
     bericht = bouw_whatsapp_bericht([rec], bijgew, "w.xlsx")  # geen orig_tijden
     assert "13:00-20:14" in bericht  # valt terug op mendrix_van/tot uit rec
 
 
 def test_bouw_bericht_nieuw_aangemaakt():
-    rec = _planning_rec(naam="Daniëlle van Gemert", order_id=1241873,
-                        inplan="Vrijdag 19-06-2026")
+    rec = _planning_rec(naam="Daniëlle van Gemert", order_id=1241873, inplan="Vrijdag 19-06-2026")
     rec["mendrix_tijdvenster"] = ""
     rec["mendrix_van"] = ""
     rec["mendrix_tot"] = ""

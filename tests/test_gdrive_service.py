@@ -35,6 +35,7 @@ def test_verkort_url_anoniem_geen_http_respons(monkeypatch):
 
 def test_verkort_url_anoniem_request_fout(monkeypatch):
     import requests as req_mod
+
     monkeypatch.delenv("TINYURL_API_TOKEN", raising=False)
     with patch(
         "ap06_planner.services.gdrive_service.requests.get",
@@ -69,6 +70,7 @@ def test_verkort_url_met_token_leeg_antwoord(monkeypatch):
 
 def test_verkort_url_met_token_api_fout(monkeypatch):
     import requests as req_mod
+
     monkeypatch.setenv("TINYURL_API_TOKEN", "mijn-token")
     with patch(
         "ap06_planner.services.gdrive_service.requests.post",
@@ -82,7 +84,9 @@ def test_verkort_url_bearer_header_correct(monkeypatch):
     monkeypatch.setenv("TINYURL_API_TOKEN", "test-bearer-token")
     mock_resp = MagicMock()
     mock_resp.json.return_value = {"data": {"tiny_url": "https://tinyurl.com/x"}}
-    with patch("ap06_planner.services.gdrive_service.requests.post", return_value=mock_resp) as mock_post:
+    with patch(
+        "ap06_planner.services.gdrive_service.requests.post", return_value=mock_resp
+    ) as mock_post:
         verkort_url("https://example.com/lang")
     _, kwargs = mock_post.call_args
     assert kwargs["headers"]["Authorization"] == "Bearer test-bearer-token"

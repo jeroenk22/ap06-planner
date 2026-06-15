@@ -66,7 +66,9 @@ def _geocodeer_google(adres: str) -> tuple[float, float] | None:
         if status in ("OVER_QUERY_LIMIT", "REQUEST_DENIED"):
             _log.warning(
                 "Google geocoding limiet/auth: status=%s voor '%s' — "
-                "controleer API-key quota of billing in Google Cloud Console", status, adres,
+                "controleer API-key quota of billing in Google Cloud Console",
+                status,
+                adres,
             )
         elif status == "ZERO_RESULTS":
             _log.debug("Google geocode: adres niet gevonden: '%s'", adres)
@@ -170,7 +172,13 @@ def _osrm_route(start_lon: float, start_lat: float, eind_lon: float, eind_lat: f
             _log.debug("OSRM fout via %s", base, exc_info=True)
             continue
 
-    _log.warning("OSRM route mislukt voor alle servers: %.4f,%.4f → %.4f,%.4f", start_lat, start_lon, eind_lat, eind_lon)
+    _log.warning(
+        "OSRM route mislukt voor alle servers: %.4f,%.4f → %.4f,%.4f",
+        start_lat,
+        start_lon,
+        eind_lat,
+        eind_lon,
+    )
     return None
 
 
@@ -229,7 +237,9 @@ def bereken_aankomsttijd(
     vertrek_query = _adres_query(vertrekplaats_postcode, vertrekplaats)
     vertrek_result = _geocodeer(vertrek_query)
     if not vertrek_result:
-        _log.warning("Aankomsttijd niet berekend: vertrekplaats '%s' niet geocodeerbaar", vertrek_query)
+        _log.warning(
+            "Aankomsttijd niet berekend: vertrekplaats '%s' niet geocodeerbaar", vertrek_query
+        )
         debug = (
             f"{eind_tijdvenster} klaar in {vertrekplaats} → {woonplaats}: "
             f"geocoding vertrekplaats mislukt → gewensttijd {eind_tijdvenster}"
@@ -249,7 +259,11 @@ def bereken_aankomsttijd(
         return eind_tijdvenster, eindtijd_str, debug
 
     buffer = _BUFFER_KORT_MIN if reistijd < _REISTIJD_DREMPEL_MIN else _BUFFER_LANG_MIN
-    drempel = f"< {_REISTIJD_DREMPEL_MIN} min" if reistijd < _REISTIJD_DREMPEL_MIN else f"≥ {_REISTIJD_DREMPEL_MIN} min"
+    drempel = (
+        f"< {_REISTIJD_DREMPEL_MIN} min"
+        if reistijd < _REISTIJD_DREMPEL_MIN
+        else f"≥ {_REISTIJD_DREMPEL_MIN} min"
+    )
 
     eind_uren, eind_min = map(int, eind_tijdvenster.split(":"))
     aankomst_min_totaal = eind_uren * 60 + eind_min + reistijd + buffer
@@ -265,5 +279,12 @@ def bereken_aankomsttijd(
         f"[{bron_label} + OSRM]"
     )
 
-    _log.info("%s → %s: %d min + %d min buffer → aankomst %s", vertrekplaats, woonplaats, reistijd, buffer, aankomsttijd)
+    _log.info(
+        "%s → %s: %d min + %d min buffer → aankomst %s",
+        vertrekplaats,
+        woonplaats,
+        reistijd,
+        buffer,
+        aankomsttijd,
+    )
     return aankomsttijd, eindtijd_str, debug

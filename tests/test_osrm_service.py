@@ -114,7 +114,10 @@ class TestGeocodeerNominatim:
     def test_rate_limit_429_logt_warning(self, caplog):
         resp = MagicMock()
         resp.status_code = 429
-        with patch("requests.get", return_value=resp), caplog.at_level("WARNING", logger="ap06.osrm"):
+        with (
+            patch("requests.get", return_value=resp),
+            caplog.at_level("WARNING", logger="ap06.osrm"),
+        ):
             result = _geocodeer_nominatim("Bladel")
         assert result is None
         assert any("429" in r.message for r in caplog.records)
@@ -156,7 +159,8 @@ class TestGeocodeerGoogle:
         resp.json.return_value = {"status": "OVER_QUERY_LIMIT", "results": []}
         with (
             patch("os.getenv", return_value="FAKE_KEY"),
-            patch("requests.get", return_value=resp),caplog.at_level("WARNING", logger="ap06.osrm")
+            patch("requests.get", return_value=resp),
+            caplog.at_level("WARNING", logger="ap06.osrm"),
         ):
             result = _geocodeer_google("Bladel")
         assert result is None
@@ -168,7 +172,8 @@ class TestGeocodeerGoogle:
         resp.json.return_value = {"status": "REQUEST_DENIED", "results": []}
         with (
             patch("os.getenv", return_value="FAKE_KEY"),
-            patch("requests.get", return_value=resp),caplog.at_level("WARNING", logger="ap06.osrm")
+            patch("requests.get", return_value=resp),
+            caplog.at_level("WARNING", logger="ap06.osrm"),
         ):
             result = _geocodeer_google("Bladel")
         assert result is None
@@ -288,7 +293,10 @@ class TestOsrmRoute:
     def test_rate_limit_429_logt_warning(self, caplog):
         resp = MagicMock()
         resp.status_code = 429
-        with patch("requests.get", return_value=resp), caplog.at_level("WARNING", logger="ap06.osrm"):
+        with (
+            patch("requests.get", return_value=resp),
+            caplog.at_level("WARNING", logger="ap06.osrm"),
+        ):
             result = _osrm_route(5.0, 51.0, 5.5, 51.5)
         assert result is None
         assert any("429" in r.message for r in caplog.records)
@@ -296,7 +304,10 @@ class TestOsrmRoute:
     def test_server_error_500_logt_warning(self, caplog):
         resp = MagicMock()
         resp.status_code = 503
-        with patch("requests.get", return_value=resp), caplog.at_level("WARNING", logger="ap06.osrm"):
+        with (
+            patch("requests.get", return_value=resp),
+            caplog.at_level("WARNING", logger="ap06.osrm"),
+        ):
             result = _osrm_route(5.0, 51.0, 5.5, 51.5)
         assert result is None
         assert any("503" in r.message for r in caplog.records)

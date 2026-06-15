@@ -42,7 +42,19 @@ class TestXlsxNaarBestandsdeel:
 
 class TestLogBestandsnaam:
     def test_format_bevat_alle_onderdelen(self, monkeypatch):
-        monkeypatch.setattr(log_service, "date", type("d", (), {"today": staticmethod(lambda: type("dt", (), {"strftime": lambda self, f: "2026-06-15"})())}))
+        monkeypatch.setattr(
+            log_service,
+            "date",
+            type(
+                "d",
+                (),
+                {
+                    "today": staticmethod(
+                        lambda: type("dt", (), {"strftime": lambda self, f: "2026-06-15"})()
+                    )
+                },
+            ),
+        )
         naam = _log_bestandsnaam("planning", "AP06_week23", "log")
         assert "planning" in naam
         assert "AP06_week23" in naam
@@ -184,6 +196,7 @@ class TestRuimOudeLogs:
         oud_bestand.write_text("oud")
         oud_tijd = (datetime.now() - timedelta(days=LOG_RETENTIE_DAGEN + 1)).timestamp()
         import os
+
         os.utime(oud_bestand, (oud_tijd, oud_tijd))
         _ruim_oude_logs_op()
         assert not oud_bestand.exists()
@@ -197,6 +210,7 @@ class TestRuimOudeLogs:
         oud_xlsx.write_bytes(b"PK\x03\x04")
         oud_tijd = (datetime.now() - timedelta(days=LOG_RETENTIE_DAGEN + 1)).timestamp()
         import os
+
         os.utime(oud_xlsx, (oud_tijd, oud_tijd))
         _ruim_oude_logs_op()
         assert not oud_xlsx.exists()

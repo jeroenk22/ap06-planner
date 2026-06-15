@@ -667,9 +667,7 @@ class TestUpdateMendrixTijdvenster:
                     "MENDRIX_SOAP_PASS": "p",
                 },
             ),
-            patch(
-                "ap06_planner.services.mendrix_service._haal_orders_xml"
-            ) as mock_fetch,
+            patch("ap06_planner.services.mendrix_service._haal_orders_xml") as mock_fetch,
             patch(
                 "ap06_planner.services.mendrix_service._maak_sessie",
                 return_value=self._mock_sessie_met_response(store_result),
@@ -781,8 +779,18 @@ class TestMaakMendrixOrder:
 
     def test_succes_retourneert_nieuw_order_id(self):
         with (
-            patch.dict("os.environ", {"MENDRIX_SOAP_URL": "https://test.nl/soap", "MENDRIX_SOAP_USER": "u", "MENDRIX_SOAP_PASS": "p"}),
-            patch("ap06_planner.services.mendrix_service._maak_sessie", return_value=self._mock(_INSERTED_XML)),
+            patch.dict(
+                "os.environ",
+                {
+                    "MENDRIX_SOAP_URL": "https://test.nl/soap",
+                    "MENDRIX_SOAP_USER": "u",
+                    "MENDRIX_SOAP_PASS": "p",
+                },
+            ),
+            patch(
+                "ap06_planner.services.mendrix_service._maak_sessie",
+                return_value=self._mock(_INSERTED_XML),
+            ),
         ):
             succes, melding = maak_mendrix_order(**_MAAK_KWARGS)
         assert succes is True
@@ -791,8 +799,18 @@ class TestMaakMendrixOrder:
     def test_fout_response_retourneert_false(self):
         fout_xml = "<EoStoreResultList><EoStoreResult><StoreResult>srError</StoreResult><StoreDescription>Ongeldig veld</StoreDescription></EoStoreResult></EoStoreResultList>"
         with (
-            patch.dict("os.environ", {"MENDRIX_SOAP_URL": "https://test.nl/soap", "MENDRIX_SOAP_USER": "u", "MENDRIX_SOAP_PASS": "p"}),
-            patch("ap06_planner.services.mendrix_service._maak_sessie", return_value=self._mock(fout_xml)),
+            patch.dict(
+                "os.environ",
+                {
+                    "MENDRIX_SOAP_URL": "https://test.nl/soap",
+                    "MENDRIX_SOAP_USER": "u",
+                    "MENDRIX_SOAP_PASS": "p",
+                },
+            ),
+            patch(
+                "ap06_planner.services.mendrix_service._maak_sessie",
+                return_value=self._mock(fout_xml),
+            ),
         ):
             succes, melding = maak_mendrix_order(**_MAAK_KWARGS)
         assert succes is False
@@ -801,7 +819,14 @@ class TestMaakMendrixOrder:
     def test_xml_bevat_naam_met_prefix(self):
         mock_s = self._mock(_INSERTED_XML)
         with (
-            patch.dict("os.environ", {"MENDRIX_SOAP_URL": "https://test.nl/soap", "MENDRIX_SOAP_USER": "u", "MENDRIX_SOAP_PASS": "p"}),
+            patch.dict(
+                "os.environ",
+                {
+                    "MENDRIX_SOAP_URL": "https://test.nl/soap",
+                    "MENDRIX_SOAP_USER": "u",
+                    "MENDRIX_SOAP_PASS": "p",
+                },
+            ),
             patch("ap06_planner.services.mendrix_service._maak_sessie", return_value=mock_s),
         ):
             maak_mendrix_order(**_MAAK_KWARGS)
@@ -812,7 +837,14 @@ class TestMaakMendrixOrder:
     def test_xml_bevat_tijdvenster(self):
         mock_s = self._mock(_INSERTED_XML)
         with (
-            patch.dict("os.environ", {"MENDRIX_SOAP_URL": "https://test.nl/soap", "MENDRIX_SOAP_USER": "u", "MENDRIX_SOAP_PASS": "p"}),
+            patch.dict(
+                "os.environ",
+                {
+                    "MENDRIX_SOAP_URL": "https://test.nl/soap",
+                    "MENDRIX_SOAP_USER": "u",
+                    "MENDRIX_SOAP_PASS": "p",
+                },
+            ),
             patch("ap06_planner.services.mendrix_service._maak_sessie", return_value=mock_s),
         ):
             maak_mendrix_order(**_MAAK_KWARGS)
@@ -824,7 +856,14 @@ class TestMaakMendrixOrder:
     def test_xml_bevat_uiterlijke_plantijd_in_instructies(self):
         mock_s = self._mock(_INSERTED_XML)
         with (
-            patch.dict("os.environ", {"MENDRIX_SOAP_URL": "https://test.nl/soap", "MENDRIX_SOAP_USER": "u", "MENDRIX_SOAP_PASS": "p"}),
+            patch.dict(
+                "os.environ",
+                {
+                    "MENDRIX_SOAP_URL": "https://test.nl/soap",
+                    "MENDRIX_SOAP_USER": "u",
+                    "MENDRIX_SOAP_PASS": "p",
+                },
+            ),
             patch("ap06_planner.services.mendrix_service._maak_sessie", return_value=mock_s),
         ):
             maak_mendrix_order(**_MAAK_KWARGS)
@@ -834,8 +873,18 @@ class TestMaakMendrixOrder:
 
     def test_exception_retourneert_false(self):
         with (
-            patch.dict("os.environ", {"MENDRIX_SOAP_URL": "https://test.nl/soap", "MENDRIX_SOAP_USER": "u", "MENDRIX_SOAP_PASS": "p"}),
-            patch("ap06_planner.services.mendrix_service._maak_sessie", side_effect=Exception("timeout")),
+            patch.dict(
+                "os.environ",
+                {
+                    "MENDRIX_SOAP_URL": "https://test.nl/soap",
+                    "MENDRIX_SOAP_USER": "u",
+                    "MENDRIX_SOAP_PASS": "p",
+                },
+            ),
+            patch(
+                "ap06_planner.services.mendrix_service._maak_sessie",
+                side_effect=Exception("timeout"),
+            ),
         ):
             succes, melding = maak_mendrix_order(**_MAAK_KWARGS)
         assert succes is False
@@ -876,8 +925,18 @@ class TestMaakMendrixDummyOrder:
 
     def test_succes_retourneert_nieuw_order_id(self):
         with (
-            patch.dict("os.environ", {"MENDRIX_SOAP_URL": "https://test.nl/soap", "MENDRIX_SOAP_USER": "u", "MENDRIX_SOAP_PASS": "p"}),
-            patch("ap06_planner.services.mendrix_service._maak_sessie", return_value=self._mock(_INSERTED_DUMMY_XML)),
+            patch.dict(
+                "os.environ",
+                {
+                    "MENDRIX_SOAP_URL": "https://test.nl/soap",
+                    "MENDRIX_SOAP_USER": "u",
+                    "MENDRIX_SOAP_PASS": "p",
+                },
+            ),
+            patch(
+                "ap06_planner.services.mendrix_service._maak_sessie",
+                return_value=self._mock(_INSERTED_DUMMY_XML),
+            ),
         ):
             succes, melding = maak_mendrix_dummy_order(**_DUMMY_KWARGS)
         assert succes is True
@@ -886,7 +945,14 @@ class TestMaakMendrixDummyOrder:
     def test_xml_bevat_client_3699(self):
         mock_s = self._mock(_INSERTED_DUMMY_XML)
         with (
-            patch.dict("os.environ", {"MENDRIX_SOAP_URL": "https://test.nl/soap", "MENDRIX_SOAP_USER": "u", "MENDRIX_SOAP_PASS": "p"}),
+            patch.dict(
+                "os.environ",
+                {
+                    "MENDRIX_SOAP_URL": "https://test.nl/soap",
+                    "MENDRIX_SOAP_USER": "u",
+                    "MENDRIX_SOAP_PASS": "p",
+                },
+            ),
             patch("ap06_planner.services.mendrix_service._maak_sessie", return_value=mock_s),
         ):
             maak_mendrix_dummy_order(**_DUMMY_KWARGS)
@@ -897,7 +963,14 @@ class TestMaakMendrixDummyOrder:
     def test_xml_bevat_product_60(self):
         mock_s = self._mock(_INSERTED_DUMMY_XML)
         with (
-            patch.dict("os.environ", {"MENDRIX_SOAP_URL": "https://test.nl/soap", "MENDRIX_SOAP_USER": "u", "MENDRIX_SOAP_PASS": "p"}),
+            patch.dict(
+                "os.environ",
+                {
+                    "MENDRIX_SOAP_URL": "https://test.nl/soap",
+                    "MENDRIX_SOAP_USER": "u",
+                    "MENDRIX_SOAP_PASS": "p",
+                },
+            ),
             patch("ap06_planner.services.mendrix_service._maak_sessie", return_value=mock_s),
         ):
             maak_mendrix_dummy_order(**_DUMMY_KWARGS)
@@ -908,7 +981,14 @@ class TestMaakMendrixDummyOrder:
     def test_xml_bevat_tasktype_2(self):
         mock_s = self._mock(_INSERTED_DUMMY_XML)
         with (
-            patch.dict("os.environ", {"MENDRIX_SOAP_URL": "https://test.nl/soap", "MENDRIX_SOAP_USER": "u", "MENDRIX_SOAP_PASS": "p"}),
+            patch.dict(
+                "os.environ",
+                {
+                    "MENDRIX_SOAP_URL": "https://test.nl/soap",
+                    "MENDRIX_SOAP_USER": "u",
+                    "MENDRIX_SOAP_PASS": "p",
+                },
+            ),
             patch("ap06_planner.services.mendrix_service._maak_sessie", return_value=mock_s),
         ):
             maak_mendrix_dummy_order(**_DUMMY_KWARGS)
@@ -919,7 +999,14 @@ class TestMaakMendrixDummyOrder:
     def test_xml_bevat_packing_naam(self):
         mock_s = self._mock(_INSERTED_DUMMY_XML)
         with (
-            patch.dict("os.environ", {"MENDRIX_SOAP_URL": "https://test.nl/soap", "MENDRIX_SOAP_USER": "u", "MENDRIX_SOAP_PASS": "p"}),
+            patch.dict(
+                "os.environ",
+                {
+                    "MENDRIX_SOAP_URL": "https://test.nl/soap",
+                    "MENDRIX_SOAP_USER": "u",
+                    "MENDRIX_SOAP_PASS": "p",
+                },
+            ),
             patch("ap06_planner.services.mendrix_service._maak_sessie", return_value=mock_s),
         ):
             maak_mendrix_dummy_order(**_DUMMY_KWARGS)
@@ -930,7 +1017,14 @@ class TestMaakMendrixDummyOrder:
     def test_notes_diversen_bevat_ophaaldagen(self):
         mock_s = self._mock(_INSERTED_DUMMY_XML)
         with (
-            patch.dict("os.environ", {"MENDRIX_SOAP_URL": "https://test.nl/soap", "MENDRIX_SOAP_USER": "u", "MENDRIX_SOAP_PASS": "p"}),
+            patch.dict(
+                "os.environ",
+                {
+                    "MENDRIX_SOAP_URL": "https://test.nl/soap",
+                    "MENDRIX_SOAP_USER": "u",
+                    "MENDRIX_SOAP_PASS": "p",
+                },
+            ),
             patch("ap06_planner.services.mendrix_service._maak_sessie", return_value=mock_s),
         ):
             maak_mendrix_dummy_order(**_DUMMY_KWARGS)
@@ -941,7 +1035,14 @@ class TestMaakMendrixDummyOrder:
     def test_instructies_meervoud_bij_meer_dan_een(self):
         mock_s = self._mock(_INSERTED_DUMMY_XML)
         with (
-            patch.dict("os.environ", {"MENDRIX_SOAP_URL": "https://test.nl/soap", "MENDRIX_SOAP_USER": "u", "MENDRIX_SOAP_PASS": "p"}),
+            patch.dict(
+                "os.environ",
+                {
+                    "MENDRIX_SOAP_URL": "https://test.nl/soap",
+                    "MENDRIX_SOAP_USER": "u",
+                    "MENDRIX_SOAP_PASS": "p",
+                },
+            ),
             patch("ap06_planner.services.mendrix_service._maak_sessie", return_value=mock_s),
         ):
             maak_mendrix_dummy_order(**{**_DUMMY_KWARGS, "aantal_lege_bakken": 3})
@@ -952,7 +1053,14 @@ class TestMaakMendrixDummyOrder:
     def test_instructies_enkelvoud_bij_een(self):
         mock_s = self._mock(_INSERTED_DUMMY_XML)
         with (
-            patch.dict("os.environ", {"MENDRIX_SOAP_URL": "https://test.nl/soap", "MENDRIX_SOAP_USER": "u", "MENDRIX_SOAP_PASS": "p"}),
+            patch.dict(
+                "os.environ",
+                {
+                    "MENDRIX_SOAP_URL": "https://test.nl/soap",
+                    "MENDRIX_SOAP_USER": "u",
+                    "MENDRIX_SOAP_PASS": "p",
+                },
+            ),
             patch("ap06_planner.services.mendrix_service._maak_sessie", return_value=mock_s),
         ):
             maak_mendrix_dummy_order(**{**_DUMMY_KWARGS, "aantal_lege_bakken": 1})
@@ -963,7 +1071,14 @@ class TestMaakMendrixDummyOrder:
     def test_xml_bevat_aantal_als_amount(self):
         mock_s = self._mock(_INSERTED_DUMMY_XML)
         with (
-            patch.dict("os.environ", {"MENDRIX_SOAP_URL": "https://test.nl/soap", "MENDRIX_SOAP_USER": "u", "MENDRIX_SOAP_PASS": "p"}),
+            patch.dict(
+                "os.environ",
+                {
+                    "MENDRIX_SOAP_URL": "https://test.nl/soap",
+                    "MENDRIX_SOAP_USER": "u",
+                    "MENDRIX_SOAP_PASS": "p",
+                },
+            ),
             patch("ap06_planner.services.mendrix_service._maak_sessie", return_value=mock_s),
         ):
             maak_mendrix_dummy_order(**{**_DUMMY_KWARGS, "aantal_lege_bakken": 4})
@@ -974,8 +1089,18 @@ class TestMaakMendrixDummyOrder:
     def test_fout_response_retourneert_false(self):
         fout_xml = "<EoStoreResultList><EoStoreResult><StoreResult>srError</StoreResult><StoreDescription>Ongeldig veld</StoreDescription></EoStoreResult></EoStoreResultList>"
         with (
-            patch.dict("os.environ", {"MENDRIX_SOAP_URL": "https://test.nl/soap", "MENDRIX_SOAP_USER": "u", "MENDRIX_SOAP_PASS": "p"}),
-            patch("ap06_planner.services.mendrix_service._maak_sessie", return_value=self._mock(fout_xml)),
+            patch.dict(
+                "os.environ",
+                {
+                    "MENDRIX_SOAP_URL": "https://test.nl/soap",
+                    "MENDRIX_SOAP_USER": "u",
+                    "MENDRIX_SOAP_PASS": "p",
+                },
+            ),
+            patch(
+                "ap06_planner.services.mendrix_service._maak_sessie",
+                return_value=self._mock(fout_xml),
+            ),
         ):
             succes, melding = maak_mendrix_dummy_order(**_DUMMY_KWARGS)
         assert succes is False
@@ -983,8 +1108,18 @@ class TestMaakMendrixDummyOrder:
 
     def test_exception_retourneert_false(self):
         with (
-            patch.dict("os.environ", {"MENDRIX_SOAP_URL": "https://test.nl/soap", "MENDRIX_SOAP_USER": "u", "MENDRIX_SOAP_PASS": "p"}),
-            patch("ap06_planner.services.mendrix_service._maak_sessie", side_effect=Exception("verbinding verbroken")),
+            patch.dict(
+                "os.environ",
+                {
+                    "MENDRIX_SOAP_URL": "https://test.nl/soap",
+                    "MENDRIX_SOAP_USER": "u",
+                    "MENDRIX_SOAP_PASS": "p",
+                },
+            ),
+            patch(
+                "ap06_planner.services.mendrix_service._maak_sessie",
+                side_effect=Exception("verbinding verbroken"),
+            ),
         ):
             succes, melding = maak_mendrix_dummy_order(**_DUMMY_KWARGS)
         assert succes is False

@@ -45,10 +45,10 @@ class _KortLevelFormatter(logging.Formatter):
     """Formatter met verkorte level-namen voor compacte, leesbare logregels."""
 
     _NIVEAUS = {
-        logging.DEBUG:    "DEBUG",
-        logging.INFO:     "INFO ",
-        logging.WARNING:  "WARN ",
-        logging.ERROR:    "ERROR",
+        logging.DEBUG: "DEBUG",
+        logging.INFO: "INFO ",
+        logging.WARNING: "WARN ",
+        logging.ERROR: "ERROR",
         logging.CRITICAL: "CRIT ",
     }
 
@@ -112,8 +112,7 @@ def initialiseer_logging(xlsx_naam: str) -> None:
 
         # Voeg alleen een nieuwe handler toe als die er nog niet is voor dit pad
         al_aanwezig = any(
-            isinstance(h, logging.FileHandler)
-            and Path(h.baseFilename).resolve() == pad.resolve()
+            isinstance(h, logging.FileHandler) and Path(h.baseFilename).resolve() == pad.resolve()
             for h in logger.handlers
         )
         if not al_aanwezig:

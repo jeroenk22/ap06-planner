@@ -130,11 +130,18 @@ def verwerk_planningsregels_batch(
     totaal_cache_create = 0
     totaal_cache_read = 0
     try:
-        _log.info("Batch gestart: %d unieke locaties in chunks van %d", len(uniq_regels), chunk_size)
+        _log.info(
+            "Batch gestart: %d unieke locaties in chunks van %d", len(uniq_regels), chunk_size
+        )
         client = _get_client()
         for i in range(0, len(uniq_regels), chunk_size):
             chunk = uniq_regels[i : i + chunk_size]
-            _log.debug("Chunk %d/%d: %d items", i // chunk_size + 1, -(-len(uniq_regels) // chunk_size), len(chunk))
+            _log.debug(
+                "Chunk %d/%d: %d items",
+                i // chunk_size + 1,
+                -(-len(uniq_regels) // chunk_size),
+                len(chunk),
+            )
             message = client.messages.create(
                 model=MODEL,
                 max_tokens=4096,
@@ -162,7 +169,9 @@ def verwerk_planningsregels_batch(
                     "Claude count-mismatch: verwacht %d, kreeg %d (chunk %d) — "
                     "mogelijk hallucineert Claude extra/ontbrekende items. "
                     "Probeer chunk_size te verkleinen.",
-                    len(chunk), len(chunk_resultaten), i // chunk_size + 1,
+                    len(chunk),
+                    len(chunk_resultaten),
+                    i // chunk_size + 1,
                 )
                 return None, melding
             alle_uniq.extend(chunk_resultaten)
@@ -170,8 +179,11 @@ def verwerk_planningsregels_batch(
         _log.info(
             "Batch klaar: %d unieke items (%d totaal) | "
             "tokens: input=%d  cache_create=%d  cache_read=%d",
-            len(uniq_regels), len(regels),
-            totaal_input, totaal_cache_create, totaal_cache_read,
+            len(uniq_regels),
+            len(regels),
+            totaal_input,
+            totaal_cache_create,
+            totaal_cache_read,
         )
 
         # Map terug naar originele volgorde
@@ -188,14 +200,17 @@ def verwerk_planningsregels_batch(
         _log.error(
             "Claude retourneerde ongeldige JSON — waarschijnlijk onjuist prompt-formaat of "
             "te lange respons. Controleer chunk-grootte (nu %d). Fout: %s | Preview: %s",
-            chunk_size, e, preview,
+            chunk_size,
+            e,
+            preview,
         )
         return None, melding
     except Exception as e:
         melding = f"Claude API-fout: {e}\n{traceback.format_exc()}"
         _log.error(
-            "Claude API-fout — controleer ANTHROPIC_API_KEY in .env en netwerk. "
-            "Fout: %s", e, exc_info=True,
+            "Claude API-fout — controleer ANTHROPIC_API_KEY in .env en netwerk. Fout: %s",
+            e,
+            exc_info=True,
         )
         return None, melding
 
@@ -257,7 +272,8 @@ def interpreteer_wijzigingen_batch(wijzigingen: list[str | None]) -> dict[str, d
         if not _api_key_waarschuwing_gegeven:
             _log.warning(
                 "interpreteer_wijzigingen_batch uitgeschakeld: %s — "
-                "wijzigingen worden via regex verwerkt (minder nauwkeurig).", e,
+                "wijzigingen worden via regex verwerkt (minder nauwkeurig).",
+                e,
             )
             _api_key_waarschuwing_gegeven = True
         return None

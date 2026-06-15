@@ -29,7 +29,10 @@ def verkort_url(url: str) -> str:
         if api_token:
             resp = requests.post(
                 "https://api.tinyurl.com/create",
-                headers={"Authorization": f"Bearer {api_token}", "Content-Type": "application/json"},
+                headers={
+                    "Authorization": f"Bearer {api_token}",
+                    "Content-Type": "application/json",
+                },
                 json={"url": url, "domain": "tinyurl.com"},
                 timeout=10,
             )
@@ -101,11 +104,15 @@ def upload_xlsx(bestand_bytes: bytes, bestandsnaam: str) -> tuple[bool, str, str
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             resumable=False,
         )
-        bestand = service.files().create(
-            body=bestand_meta,
-            media_body=media,
-            fields="id",
-        ).execute()
+        bestand = (
+            service.files()
+            .create(
+                body=bestand_meta,
+                media_body=media,
+                fields="id",
+            )
+            .execute()
+        )
 
         file_id = bestand.get("id")
         url = verkort_url(f"https://drive.google.com/file/d/{file_id}/view")
@@ -123,17 +130,22 @@ def _ruim_oude_bestanden_op(service, folder_id: str) -> None:
     grens_str = grens.strftime("%Y-%m-%dT%H:%M:%SZ")
 
     try:
-        resultaat = service.files().list(
-            q=f"'{folder_id}' in parents and createdTime < '{grens_str}' and trashed = false",
-            fields="files(id, name, createdTime)",
-        ).execute()
+        resultaat = (
+            service.files()
+            .list(
+                q=f"'{folder_id}' in parents and createdTime < '{grens_str}' and trashed = false",
+                fields="files(id, name, createdTime)",
+            )
+            .execute()
+        )
 
         for bestand in resultaat.get("files", []):
             try:
                 service.files().delete(fileId=bestand["id"]).execute()
                 _log.info(
                     "Oud Drive-bestand verwijderd: %s (aangemaakt: %s)",
-                    bestand["name"], bestand["createdTime"],
+                    bestand["name"],
+                    bestand["createdTime"],
                 )
             except Exception as e:
                 _log.warning("Verwijderen mislukt voor %s: %s", bestand["name"], e)

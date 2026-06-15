@@ -117,20 +117,23 @@ def _soap_request(inner_xml: str) -> str:
     except requests.exceptions.Timeout:
         _log.warning(
             "SOAP timeout (>20s) voor %s — controleer of Mendrix bereikbaar is: %s",
-            root_tag, url.split("?")[0],
+            root_tag,
+            url.split("?")[0],
         )
         raise
     except requests.exceptions.ConnectionError as e:
         _log.warning(
             "SOAP verbindingsfout voor %s — controleer MENDRIX_SOAP_URL in .env: %s",
-            root_tag, e,
+            root_tag,
+            e,
         )
         raise
 
     if resp.status_code in (401, 403):
         _log.warning(
             "SOAP authenticatie mislukt (HTTP %d) — controleer MENDRIX_SOAP_USER en "
-            "MENDRIX_SOAP_PASS in .env", resp.status_code,
+            "MENDRIX_SOAP_PASS in .env",
+            resp.status_code,
         )
     elif resp.status_code >= 400:
         _log.warning("SOAP HTTP-fout %d voor %s", resp.status_code, root_tag)
@@ -169,7 +172,9 @@ def haal_order_ids(datum: date) -> list[int]:
 
     response_xml = _soap_request(inner_xml)
     ids = [int(m) for m in re.findall(r"<Id>(\d+)</Id>", response_xml)]
-    _log.info("Order-IDs opgehaald voor %s: %d orders gevonden", datum.strftime("%d-%m-%Y"), len(ids))
+    _log.info(
+        "Order-IDs opgehaald voor %s: %d orders gevonden", datum.strftime("%d-%m-%Y"), len(ids)
+    )
     return ids
 
 
@@ -295,7 +300,9 @@ def update_mendrix_tijdvenster(
         err_m = re.search(r"<ErrorMessage>(.*?)</ErrorMessage>", result_xml, re.DOTALL)
         err = err_m.group(1).strip() if err_m else result_xml[:500]
         _log.error(
-            "Tijdvenster bijwerken mislukt: order #%s — Mendrix fout: %s", order_id, err,
+            "Tijdvenster bijwerken mislukt: order #%s — Mendrix fout: %s",
+            order_id,
+            err,
         )
         return False, f"Mendrix fout: {err}"
 
@@ -406,8 +413,10 @@ def _simpele_naam_match(zoek: str, kandidaten: list[str]) -> str | None:
         # Voornamen mogen niet conflicteren (beide vol uitgeschreven maar verschillend)
         kern_voor = _voornaam(kern_lower)
         if (
-            zoek_voor and kern_voor
-            and len(zoek_voor) > 1 and len(kern_voor) > 1
+            zoek_voor
+            and kern_voor
+            and len(zoek_voor) > 1
+            and len(kern_voor) > 1
             and zoek_voor != kern_voor
         ):
             continue
@@ -439,7 +448,12 @@ def zoek_mendrix_order(
 
     match = _simpele_naam_match(naam, kandidaten)
     if match:
-        _log.info("%-30s → simpele match op '%s' (order #%s)", naam, match, mendrix_namen_ids[match]["order_id"])
+        _log.info(
+            "%-30s → simpele match op '%s' (order #%s)",
+            naam,
+            match,
+            mendrix_namen_ids[match]["order_id"],
+        )
         return mendrix_namen_ids[match]["order_id"], match
 
     if gebruik_ai_fallback:
@@ -448,7 +462,12 @@ def zoek_mendrix_order(
 
             ai_match = match_naam_mendrix(naam, kandidaten)
             if ai_match and ai_match in mendrix_namen_ids:
-                _log.info("%-30s → AI-match op '%s' (order #%s)", naam, ai_match, mendrix_namen_ids[ai_match]["order_id"])
+                _log.info(
+                    "%-30s → AI-match op '%s' (order #%s)",
+                    naam,
+                    ai_match,
+                    mendrix_namen_ids[ai_match]["order_id"],
+                )
                 return mendrix_namen_ids[ai_match]["order_id"], ai_match
         except Exception:
             _log.debug("AI naam-match mislukt voor '%s'", naam, exc_info=True)
@@ -457,7 +476,10 @@ def zoek_mendrix_order(
     meer = f" (+ {len(kandidaten) - 5} meer)" if len(kandidaten) > 5 else ""
     _log.warning(
         "%-30s → geen match in %d Mendrix-orders. Beschikbare namen: %s%s",
-        naam, len(kandidaten), voorbeeld, meer,
+        naam,
+        len(kandidaten),
+        voorbeeld,
+        meer,
     )
     return None, None
 
@@ -602,7 +624,9 @@ def maak_mendrix_order(
                 return True, f"Order #{new_id} aangemaakt voor {naam}"
             _log.warning(
                 "Laadorder srInserted maar order-ID niet gevonden in response voor %s — "
-                "controleer handmatig in Mendrix. Response: %s", naam, result_xml[:300],
+                "controleer handmatig in Mendrix. Response: %s",
+                naam,
+                result_xml[:300],
             )
             return True, f"Order aangemaakt voor {naam} (ID onbekend)"
 
@@ -640,7 +664,9 @@ def maak_mendrix_dummy_order(
 
         voornaam = naam.split()[0] if naam else naam
         ophaaldagen_str = "-".join(ophaaldagen) if ophaaldagen else ""
-        order_notes = f"AP06 - Ophaaldagen {voornaam}: {ophaaldagen_str} (order automatisch ingeschoten)"
+        order_notes = (
+            f"AP06 - Ophaaldagen {voornaam}: {ophaaldagen_str} (order automatisch ingeschoten)"
+        )
 
         if aantal_lege_bakken == 1:
             instructies = f"1 {_DUMMY_PACKING_NAME} en AP06 sleutel meenemen!"
@@ -738,12 +764,16 @@ def maak_mendrix_dummy_order(
             if new_id:
                 _log.info(
                     "Dummy order aangemaakt (srInserted): %s → order #%s (%d mestbak(ken))",
-                    naam, new_id, aantal_lege_bakken,
+                    naam,
+                    new_id,
+                    aantal_lege_bakken,
                 )
                 return True, f"Dummy order #{new_id} aangemaakt voor {naam}"
             _log.warning(
                 "Dummy order srInserted maar order-ID niet gevonden in response voor %s — "
-                "controleer handmatig in Mendrix. Response: %s", naam, result_xml[:300],
+                "controleer handmatig in Mendrix. Response: %s",
+                naam,
+                result_xml[:300],
             )
             return True, f"Dummy order aangemaakt voor {naam} (ID onbekend)"
 
