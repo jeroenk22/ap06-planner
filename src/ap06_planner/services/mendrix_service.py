@@ -227,12 +227,11 @@ def _vervang_requested_tijden(xml: str, nieuwe_begin: str, nieuwe_eind: str) -> 
             f"<DurationInHours>{duur_uren}</DurationInHours>",
             blok,
         )
-        blok = re.sub(
+        return re.sub(
             r"<DurationInDateTime>[^<]*</DurationInDateTime>",
             f"<DurationInDateTime>{duur_dt}</DurationInDateTime>",
             blok,
         )
-        return blok
 
     return re.sub(r"<Requested\b[^>]*>.*?</Requested>", _verwerk_blok, xml, flags=re.DOTALL)
 

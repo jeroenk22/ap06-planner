@@ -13,7 +13,6 @@ from ap06_planner.services.log_service import (
     LOGGER_MENDRIX,
     LOGGER_OSRM,
     LOGGER_PLANNING,
-    XLSX_DIR,
     _log_bestandsnaam,
     _ruim_oude_logs_op,
     _xlsx_naar_bestandsdeel,

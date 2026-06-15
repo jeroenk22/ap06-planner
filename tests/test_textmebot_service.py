@@ -2,14 +2,11 @@
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from ap06_planner.services.textmebot_service import (
     bereken_alle_groen,
     bouw_whatsapp_bericht,
     stuur_whatsapp,
 )
-
 
 # ---------------------------------------------------------------------------
 # stuur_whatsapp

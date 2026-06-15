@@ -13,6 +13,7 @@ Maakt per xlsx-inlezing zes logbestanden aan in de logs/ map:
 Retentie: bestanden ouder dan LOG_RETENTIE_DAGEN worden automatisch verwijderd.
 """
 
+import contextlib
 import logging
 import re
 from datetime import date, datetime, timedelta
@@ -60,8 +61,7 @@ def _xlsx_naar_bestandsdeel(xlsx_naam: str) -> str:
     """Haal de bestandsnaam zonder extensie op en saniteer voor gebruik in een bestandsnaam."""
     naam = Path(xlsx_naam).stem
     # Vervang tekens die niet toegestaan zijn in Windows-bestandsnamen
-    naam = re.sub(r'[\\/*?:"<>|]', "-", naam)
-    return naam
+    return re.sub(r'[\\/*?:"<>|]', "-", naam)
 
 
 def _log_bestandsnaam(component: str, xlsx_deel: str, extensie: str) -> str:
@@ -80,10 +80,8 @@ def _ruim_oude_logs_op() -> None:
             if pad.is_file():
                 gewijzigd = datetime.fromtimestamp(pad.stat().st_mtime)
                 if gewijzigd < grens:
-                    try:
+                    with contextlib.suppress(OSError):
                         pad.unlink()
-                    except OSError:
-                        pass  # bestand al verwijderd of vergrendeld — sla over
 
 
 def initialiseer_logging(xlsx_naam: str) -> None:
@@ -136,10 +134,8 @@ def sla_xlsx_op(xlsx_naam: str, inhoud: bytes) -> None:
     XLSX_DIR.mkdir(parents=True, exist_ok=True)
     xlsx_deel = _xlsx_naar_bestandsdeel(xlsx_naam)
     pad = XLSX_DIR / _log_bestandsnaam("upload", xlsx_deel, "xlsx")
-    try:
+    with contextlib.suppress(OSError):
         pad.write_bytes(inhoud)
-    except OSError:
-        pass  # schrijffout (schijf vol, rechten) — niet fataal
 
 
 def debug_json_pad(xlsx_naam: str) -> Path:

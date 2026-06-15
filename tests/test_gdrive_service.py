@@ -1,9 +1,7 @@
 """Tests voor gdrive_service.py."""
 
-from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, call, patch
-
-import pytest
+from datetime import UTC, datetime, timedelta
+from unittest.mock import MagicMock, patch
 
 from ap06_planner.services.gdrive_service import (
     RETENTIE_DAGEN,
@@ -11,7 +9,6 @@ from ap06_planner.services.gdrive_service import (
     upload_xlsx,
     verkort_url,
 )
-
 
 # ---------------------------------------------------------------------------
 # verkort_url — anonieme fallback (geen token)
@@ -178,7 +175,7 @@ def test_upload_xlsx_drive_fout(monkeypatch, tmp_path):
 
 
 def _oud_bestand(file_id: str, naam: str, dagen_geleden: int) -> dict:
-    aangemaakt = datetime.now(tz=timezone.utc) - timedelta(days=dagen_geleden)
+    aangemaakt = datetime.now(tz=UTC) - timedelta(days=dagen_geleden)
     return {"id": file_id, "name": naam, "createdTime": aangemaakt.strftime("%Y-%m-%dT%H:%M:%SZ")}
 
 

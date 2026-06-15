@@ -7,8 +7,7 @@ ouder dan RETENTIE_DAGEN automatisch bij elke upload.
 
 import logging
 import os
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
+from datetime import UTC, datetime, timedelta
 
 import requests
 
@@ -84,8 +83,9 @@ def upload_xlsx(bestand_bytes: bytes, bestandsnaam: str) -> tuple[bool, str, str
         return False, "", "GDRIVE_CREDENTIALS_JSON niet ingesteld"
 
     try:
-        from googleapiclient.http import MediaIoBaseUpload
         from io import BytesIO
+
+        from googleapiclient.http import MediaIoBaseUpload
 
         service = _drive_service()
 
@@ -119,7 +119,7 @@ def upload_xlsx(bestand_bytes: bytes, bestandsnaam: str) -> tuple[bool, str, str
 
 def _ruim_oude_bestanden_op(service, folder_id: str) -> None:
     """Verwijder bestanden ouder dan RETENTIE_DAGEN uit de Drive-map."""
-    grens = datetime.now(tz=timezone.utc) - timedelta(days=RETENTIE_DAGEN)
+    grens = datetime.now(tz=UTC) - timedelta(days=RETENTIE_DAGEN)
     grens_str = grens.strftime("%Y-%m-%dT%H:%M:%SZ")
 
     try:
