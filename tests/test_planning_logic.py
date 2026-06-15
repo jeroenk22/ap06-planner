@@ -9,6 +9,7 @@ from ap06_planner.models.schemas import Monsternemer, PlanningRegel, Tijdvenster
 from ap06_planner.pages.planning import (
     _haversine_km,
     _kies_laatste_tv,
+    _tijdafwijking_kleur,
     _verwerk_monsternemer,
 )
 
@@ -69,6 +70,33 @@ def _regel(
 
 
 # ─── _haversine_km ───────────────────────────────────────────────────────────
+
+
+class TestTijdafwijkingKleur:
+    def test_geen_afwijking_is_groen(self):
+        assert _tijdafwijking_kleur("07:00", "07:00") == "groen"
+
+    def test_kleine_afwijking_is_groen(self):
+        assert _tijdafwijking_kleur("07:00", "07:20") == "groen"
+
+    def test_halfuur_is_geel(self):
+        assert _tijdafwijking_kleur("07:00", "07:30") == "geel"
+
+    def test_uur_is_geel(self):
+        assert _tijdafwijking_kleur("07:00", "08:00") == "geel"
+
+    def test_meer_dan_halfuur_is_geel(self):
+        assert _tijdafwijking_kleur("07:00", "08:01") == "geel"
+
+    def test_grote_afwijking_is_geel(self):
+        assert _tijdafwijking_kleur("10:00", "15:00") == "geel"
+
+    def test_negatieve_richting_ook_geel(self):
+        assert _tijdafwijking_kleur("13:00", "07:00") == "geel"
+
+    def test_ongeldige_input_geeft_groen(self):
+        assert _tijdafwijking_kleur("", "07:00") == "groen"
+        assert _tijdafwijking_kleur("07:00", "") == "groen"
 
 
 class TestHaversineKm:
@@ -871,6 +899,11 @@ class TestRenderEarlyExits:
         mock = MagicMock()
         mock.spinner.return_value.__enter__ = MagicMock(return_value=None)
         mock.spinner.return_value.__exit__ = MagicMock(return_value=False)
+        # session_state.pop() moet None retourneren (lege state) zodat pending-action
+        # code niet per ongeluk wordt uitgevoerd met een truthy MagicMock
+        mock.session_state.pop.side_effect = lambda *args, **kwargs: (
+            args[1] if len(args) > 1 else None
+        )
         return mock
 
     def test_geen_bestand_geupload(self):
@@ -891,11 +924,13 @@ class TestRenderEarlyExits:
 
         st_mock = self._mock_st()
         uploaded_mock = MagicMock()
+        uploaded_mock.name = "test.xlsx"
         uploaded_mock.read.return_value = b""
         st_mock.file_uploader.return_value = uploaded_mock
 
         with (
             patch("ap06_planner.pages.planning.st", st_mock),
+            patch("ap06_planner.pages.planning.initialiseer_logging"),
             patch(
                 "ap06_planner.pages.planning.lees_planningsbestand",
                 side_effect=Exception("xlsx-fout"),

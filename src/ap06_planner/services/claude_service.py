@@ -12,13 +12,21 @@ LETOP: API-calls worden alleen gedaan als de reguliere parsers falen.
 """
 
 import json
+import logging
 import os
 import re
+import traceback
 
 import anthropic
+import httpx
+
+_log = logging.getLogger("ap06.claude")
 
 _MARKDOWN_CODE_BLOCK = re.compile(r"```(?:json)?\s*\n?(.*?)\n?```", re.DOTALL)
 _STRIP_LAD_LOS_NR = re.compile(r"\b(LAD|LOS)\d+\b", re.IGNORECASE)
+
+# Voorkom tientallen identieke "API-key ontbreekt" meldingen per run
+_api_key_waarschuwing_gegeven = False
 
 
 def _parse_json(tekst: str):
@@ -40,17 +48,18 @@ def _parse_json(tekst: str):
 
 
 MODEL = "claude-sonnet-4-6"
-_client: anthropic.Anthropic | None = None
 
 
 def _get_client() -> anthropic.Anthropic:
-    global _client
-    if _client is None:
-        api_key = os.getenv("ANTHROPIC_API_KEY")
-        if not api_key:
-            raise ValueError("ANTHROPIC_API_KEY niet gevonden. Voeg toe aan .env bestand.")
-        _client = anthropic.Anthropic(api_key=api_key)
-    return _client
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise ValueError("ANTHROPIC_API_KEY niet gevonden. Voeg toe aan .env bestand.")
+    # trust_env=False: voorkomt WinError 233 op Windows doordat httpx anders
+    # automatisch Windows-systeemproxy's oppikt die mogelijk niet actief zijn.
+    return anthropic.Anthropic(
+        api_key=api_key,
+        http_client=httpx.Client(trust_env=False),
+    )
 
 
 _PLANNINGSREGEL_SYSTEM = """Je analyseert planningsregels uit een AP06 monstername-planning.
@@ -121,9 +130,18 @@ def verwerk_planningsregels_batch(
     totaal_cache_create = 0
     totaal_cache_read = 0
     try:
+        _log.info(
+            "Batch gestart: %d unieke locaties in chunks van %d", len(uniq_regels), chunk_size
+        )
         client = _get_client()
         for i in range(0, len(uniq_regels), chunk_size):
             chunk = uniq_regels[i : i + chunk_size]
+            _log.debug(
+                "Chunk %d/%d: %d items",
+                i // chunk_size + 1,
+                -(-len(uniq_regels) // chunk_size),
+                len(chunk),
+            )
             message = client.messages.create(
                 model=MODEL,
                 max_tokens=4096,
@@ -143,19 +161,29 @@ def verwerk_planningsregels_batch(
             tekst_blok = next(b for b in message.content if b.type == "text")
             chunk_resultaten = _parse_json(tekst_blok.text)
             if len(chunk_resultaten) != len(chunk):
-                return None, (
+                melding = (
                     f"Claude retourneerde {len(chunk_resultaten)} resultaten "
                     f"voor {len(chunk)} invoer-regels (chunk {i // chunk_size + 1})"
                 )
+                _log.error(
+                    "Claude count-mismatch: verwacht %d, kreeg %d (chunk %d) — "
+                    "mogelijk hallucineert Claude extra/ontbrekende items. "
+                    "Probeer chunk_size te verkleinen.",
+                    len(chunk),
+                    len(chunk_resultaten),
+                    i // chunk_size + 1,
+                )
+                return None, melding
             alle_uniq.extend(chunk_resultaten)
 
-        import sys
-
-        print(
-            f"[Claude batch] {len(uniq_regels)} unieke items ({len(regels)} totaal) | "
-            f"input={totaal_input} cache_create={totaal_cache_create} cache_read={totaal_cache_read} tokens "
-            f"| limit=30K/min",
-            file=sys.stderr,
+        _log.info(
+            "Batch klaar: %d unieke items (%d totaal) | "
+            "tokens: input=%d  cache_create=%d  cache_read=%d",
+            len(uniq_regels),
+            len(regels),
+            totaal_input,
+            totaal_cache_create,
+            totaal_cache_read,
         )
 
         # Map terug naar originele volgorde
@@ -168,9 +196,23 @@ def verwerk_planningsregels_batch(
 
     except json.JSONDecodeError as e:
         preview = repr(tekst_blok.text[:300]) if tekst_blok else "geen tekst-blok"
-        return None, f"Claude JSON-fout: {e} — respons: {preview}"
+        melding = f"Claude JSON-fout: {e} — respons: {preview}"
+        _log.error(
+            "Claude retourneerde ongeldige JSON — waarschijnlijk onjuist prompt-formaat of "
+            "te lange respons. Controleer chunk-grootte (nu %d). Fout: %s | Preview: %s",
+            chunk_size,
+            e,
+            preview,
+        )
+        return None, melding
     except Exception as e:
-        return None, f"Claude API-fout: {e}"
+        melding = f"Claude API-fout: {e}\n{traceback.format_exc()}"
+        _log.error(
+            "Claude API-fout — controleer ANTHROPIC_API_KEY in .env en netwerk. Fout: %s",
+            e,
+            exc_info=True,
+        )
+        return None, melding
 
 
 def analyseer_tijdvenster_met_claude(tekst: str) -> dict | None:
@@ -207,6 +249,7 @@ def interpreteer_wijzigingen_batch(wijzigingen: list[str | None]) -> dict[str, d
     uniek = list(dict.fromkeys(w for w in wijzigingen if w))
     if not uniek:
         return {}
+    global _api_key_waarschuwing_gegeven
     try:
         client = _get_client()
         message = client.messages.create(
@@ -224,7 +267,18 @@ def interpreteer_wijzigingen_batch(wijzigingen: list[str | None]) -> dict[str, d
         tekst_blok = next(b for b in message.content if b.type == "text")
         resultaten = _parse_json(tekst_blok.text)
         return dict(zip(uniek, resultaten, strict=False))
+    except ValueError as e:
+        # Ontbrekende API-key: log eenmalig als WARNING, daarna stil
+        if not _api_key_waarschuwing_gegeven:
+            _log.warning(
+                "interpreteer_wijzigingen_batch uitgeschakeld: %s — "
+                "wijzigingen worden via regex verwerkt (minder nauwkeurig).",
+                e,
+            )
+            _api_key_waarschuwing_gegeven = True
+        return None
     except Exception:
+        _log.debug("interpreteer_wijzigingen_batch mislukt", exc_info=True)
         return None
 
 
@@ -302,7 +356,10 @@ Naam om te matchen: "{zoek_naam}"
 Kandidatenlijst:
 {chr(10).join(f"- {n}" for n in kandidaten)}
 
-Antwoord ALLEEN met de exacte naam uit de lijst, of "GEEN" als er geen redelijke match is.
+Regels:
+- Dezelfde achternaam maar een andere voornaam = GEEN match (bijv. "Bert Coppens" ≠ "Piet Coppens")
+- Spellingsvariaties, initialen en tussenvoegsels zijn wel toegestaan
+- Antwoord ALLEEN met de exacte naam uit de lijst, of "GEEN" als er geen redelijke match is.
 """
 
     try:

@@ -49,10 +49,15 @@ src/ap06_planner/
     tijdvenster.py → "Bladel TonTrans 7-18 LAD17" → {plaats, start, eind}
     wijzigingen.py → "Naar 12-18", "Anouk na 12", "vervallen" verwerken
   services/
-    claude_service.py → Claude API voor complexe/ambigue cases
-    osrm_service.py   → Reistijd berekening (A→B in minuten)
-    nager_service.py  → NL nationale feestdagen via Nager.Date API
-    db_service.py     → SQLite CRUD voor monsternemers
+    claude_service.py  → Claude API voor complexe/ambigue cases
+    osrm_service.py    → Reistijd berekening (A→B in minuten)
+    nager_service.py   → NL nationale feestdagen via Nager.Date API
+    db_service.py      → SQLite CRUD voor monsternemers
+    mendrix_service.py → Mendrix SOAP Custom Link integratie
+docs/
+  Mendrix_soap_customlink_docs.md → ALTIJD raadplegen bij elke wijziging aan mendrix_service.py
+  examples/                       → XML-voorbeeldbestanden Mendrix Custom Link; raadplegen bij
+                                    nieuwe SOAP-calls of bij twijfel over request/response-structuur
   models/
     schemas.py     → Dataklassen (MonsternemeRecord, PlanningRow, etc.)
   utils/
@@ -137,6 +142,13 @@ Bij elke codewijziging altijd controleren:
 - Moeten bestaande tests aangepast worden?
 - Zijn er tests die niet meer relevant zijn?
 - Zijn er nieuwe tests nodig?
+
+### 6. Foutafhandeling na elke codewijziging
+Bij elke nieuwe functie of wijziging altijd zelf controleren (zonder dat de gebruiker dit hoeft te vragen):
+- Alle externe aanroepen (SOAP, HTTP, DB, bestands-I/O) zitten in een `try/except`
+- Functies die kunnen falen retourneren `(False, melding)` of `None` — nooit een onverwachte exception naar de UI
+- Foutmeldingen zijn informatief (bevatten context, geen ruwe stack traces naar de gebruiker)
+- Nieuwe `except`-blokken loggen met `_log.debug(..., exc_info=True)` of `_log.warning(...)` waar zinvol
 
 ---
 

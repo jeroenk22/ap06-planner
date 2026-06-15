@@ -74,7 +74,6 @@ class TestParseJson:
 
 class TestGetClient:
     def test_zonder_api_key_raises(self):
-        cs._client = None
         with (
             patch("os.getenv", return_value=None),
             pytest.raises(ValueError, match="ANTHROPIC_API_KEY"),
@@ -82,18 +81,17 @@ class TestGetClient:
             _get_client()
 
     def test_met_api_key(self):
-        cs._client = None
         with patch("os.getenv", return_value="test-key"), patch("anthropic.Anthropic") as mock_cls:
             mock_cls.return_value = MagicMock()
             client = _get_client()
         assert client is not None
 
-    def test_caching_client(self):
-        fake_client = MagicMock()
-        cs._client = fake_client
-        result = _get_client()
-        assert result is fake_client
-        cs._client = None  # Opschonen
+    def test_elke_call_nieuwe_client(self):
+        with patch("os.getenv", return_value="test-key"), patch("anthropic.Anthropic") as mock_cls:
+            mock_cls.side_effect = [MagicMock(), MagicMock()]
+            c1 = _get_client()
+            c2 = _get_client()
+        assert c1 is not c2
 
 
 class TestVerwerkPlanningsregelsBatch:

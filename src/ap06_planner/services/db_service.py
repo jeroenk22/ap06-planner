@@ -105,6 +105,29 @@ def zoek_monsternemer(
     return None
 
 
+def _monsternemer_naar_sql_params(m: Monsternemer) -> tuple:
+    """Zet een Monsternemer om naar een SQL-parametertuple (zelfde volgorde als INSERT/UPDATE)."""
+    return (
+        m.code,
+        m.voornaam,
+        m.tussenvoegsel,
+        m.achternaam,
+        m.adres,
+        m.postcode,
+        m.woonplaats,
+        m.land,
+        m.telefoon,
+        m.laadinstructie,
+        ",".join(m.ophaaldagen),
+        m.uiterlijke_tijd,
+        m.uiterlijke_plantijd,
+        m.bijzonderheden,
+        m.aantal_lege_bakken,
+        int(m.sjabloon),
+        int(m.ophalen),
+    )
+
+
 def voeg_monsternemer_toe(m: Monsternemer, db_path: Path = DB_DEFAULT) -> int:
     """Voeg een monsternemer toe. Retourneert het nieuwe ID."""
     initialiseer_db(db_path)
@@ -118,28 +141,11 @@ def voeg_monsternemer_toe(m: Monsternemer, db_path: Path = DB_DEFAULT) -> int:
                  uiterlijke_plantijd, bijzonderheden, aantal_lege_bakken, sjabloon, ophalen)
                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
-                (
-                    m.code,
-                    m.voornaam,
-                    m.tussenvoegsel,
-                    m.achternaam,
-                    m.adres,
-                    m.postcode,
-                    m.woonplaats,
-                    m.land,
-                    m.telefoon,
-                    m.laadinstructie,
-                    ",".join(m.ophaaldagen),
-                    m.uiterlijke_tijd,
-                    m.uiterlijke_plantijd,
-                    m.bijzonderheden,
-                    m.aantal_lege_bakken,
-                    int(m.sjabloon),
-                    int(m.ophalen),
-                ),
+                _monsternemer_naar_sql_params(m),
             )
             conn.commit()
-            assert cursor.lastrowid is not None
+            if cursor.lastrowid is None:
+                raise RuntimeError("Geen lastrowid na INSERT — dit zou niet mogen gebeuren")
             return cursor.lastrowid
     except sqlite3.Error as e:
         raise RuntimeError(f"Database fout bij opslaan monsternemer: {e}") from e
@@ -158,26 +164,7 @@ def update_monsternemer(m: Monsternemer, db_path: Path = DB_DEFAULT) -> bool:
                     uiterlijke_plantijd=?, bijzonderheden=?, aantal_lege_bakken=?, sjabloon=?, ophalen=?
                 WHERE id=?
                 """,
-                (
-                    m.code,
-                    m.voornaam,
-                    m.tussenvoegsel,
-                    m.achternaam,
-                    m.adres,
-                    m.postcode,
-                    m.woonplaats,
-                    m.land,
-                    m.telefoon,
-                    m.laadinstructie,
-                    ",".join(m.ophaaldagen),
-                    m.uiterlijke_tijd,
-                    m.uiterlijke_plantijd,
-                    m.bijzonderheden,
-                    m.aantal_lege_bakken,
-                    int(m.sjabloon),
-                    int(m.ophalen),
-                    m.id,
-                ),
+                (*_monsternemer_naar_sql_params(m), m.id),
             )
             conn.commit()
             return cursor.rowcount > 0
