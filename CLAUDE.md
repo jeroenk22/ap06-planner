@@ -101,6 +101,7 @@ data/
 - Nooit bestaande tests verwijderen
 - Nooit data/ap06.db aanmaken of overschrijven zonder bevestiging
 - Nooit de ANTHROPIC_API_KEY logen of printen
+- Nooit verwijzingen naar Claude of Claude Code opnemen in commits, PR-beschrijvingen of andere GitHub-content (geen "Co-Authored-By: Claude", geen "Generated with Claude Code")
 
 ---
 
