@@ -47,12 +47,15 @@ def stuur_whatsapp(bericht: str) -> tuple[bool, str]:
         return False, "WhatsApp verzending mislukt (zie log voor details)"
 
 
-def stuur_whatsapp_document(document_url: str, bestandsnaam: str = "") -> tuple[bool, str]:
+def stuur_whatsapp_document(
+    document_url: str, bestandsnaam: str = "", tekst: str = ""
+) -> tuple[bool, str]:
     """
     Stuur een document als WhatsApp-bijlage via de TextMeBot API.
 
     document_url moet een publiek toegankelijke URL zijn (bijv. Google Drive).
     bestandsnaam is optioneel en overschrijft de weergavenaam in WhatsApp.
+    tekst is optioneel en wordt als caption onder het document getoond.
 
     Returns (succes, melding).
     """
@@ -65,8 +68,12 @@ def stuur_whatsapp_document(document_url: str, bestandsnaam: str = "") -> tuple[
     params: dict = {"recipient": ontvanger, "apikey": api_key, "document": document_url}
     if bestandsnaam:
         params["filename"] = bestandsnaam
+    if tekst:
+        params["text"] = tekst
 
     _log.info("Document versturen naar %s: %s", ontvanger, document_url)
+    if tekst:
+        _log.info("Caption:\n%s", tekst)
     try:
         resp = requests.get(
             "https://api.textmebot.com/send.php",
@@ -74,9 +81,9 @@ def stuur_whatsapp_document(document_url: str, bestandsnaam: str = "") -> tuple[
             timeout=15,
         )
         resp.raise_for_status()
-        tekst = resp.text.strip()
-        _log.info("Document respons: %s", tekst)
-        return True, tekst
+        resultaat = resp.text.strip()
+        _log.info("Document respons: %s", resultaat)
+        return True, resultaat
     except requests.RequestException as e:
         _log.warning("Document sturen mislukt: %s", type(e).__name__, exc_info=True)
         return False, "Document verzending mislukt (zie log voor details)"

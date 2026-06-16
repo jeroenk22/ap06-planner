@@ -68,13 +68,29 @@ def test_stuur_whatsapp_document_succes(monkeypatch):
         "ap06_planner.services.textmebot_service.requests.get", return_value=mock_resp
     ) as mock_get:
         succes, melding = stuur_whatsapp_document(
-            "https://drive.google.com/file/d/abc/view", "planning.xlsx"
+            "https://drive.google.com/uc?export=download&id=abc",
+            "planning.xlsx",
+            "Samenvatting tekst",
         )
     assert succes
     assert melding == "Message queued"
     _, kwargs = mock_get.call_args
-    assert kwargs["params"]["document"] == "https://drive.google.com/file/d/abc/view"
+    assert kwargs["params"]["document"] == "https://drive.google.com/uc?export=download&id=abc"
     assert kwargs["params"]["filename"] == "planning.xlsx"
+    assert kwargs["params"]["text"] == "Samenvatting tekst"
+
+
+def test_stuur_whatsapp_document_zonder_tekst(monkeypatch):
+    monkeypatch.setenv("TEXTMEBOT_API_KEY", "key123")
+    monkeypatch.setenv("TEXTMEBOT_ONTVANGER", "+31612345678")
+    mock_resp = MagicMock()
+    mock_resp.text = "Message queued"
+    with patch(
+        "ap06_planner.services.textmebot_service.requests.get", return_value=mock_resp
+    ) as mock_get:
+        stuur_whatsapp_document("https://drive.google.com/uc?export=download&id=abc")
+    _, kwargs = mock_get.call_args
+    assert "text" not in kwargs["params"]
 
 
 def test_stuur_whatsapp_document_request_fout(monkeypatch):

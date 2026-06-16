@@ -701,9 +701,12 @@ def render():
                         mendrix_update_resultaten=_mendrix_update_res,
                         mendrix_originele_tijden=_mendrix_orig_tijden,
                     )  # pragma: no cover
-                    _succes, _melding = stuur_whatsapp(_bericht)  # pragma: no cover
-                    if _succes and _xlsx_url:  # pragma: no cover
-                        stuur_whatsapp_document(_xlsx_url, uploaded.name)  # pragma: no cover
+                    if _xlsx_url:  # pragma: no cover
+                        _succes, _melding = stuur_whatsapp_document(  # pragma: no cover
+                            _xlsx_url, uploaded.name, _bericht
+                        )
+                    else:  # pragma: no cover
+                        _succes, _melding = stuur_whatsapp(_bericht)  # pragma: no cover
                     if _succes:  # pragma: no cover
                         st.session_state[_wa_sleutel] = True  # pragma: no cover
                         st.success("✅ WhatsApp verstuurd!")  # pragma: no cover
