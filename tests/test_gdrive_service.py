@@ -137,17 +137,13 @@ def test_upload_xlsx_succes(monkeypatch, tmp_path):
     monkeypatch.setenv("GDRIVE_FOLDER_ID", "folder123")
 
     mock_service = _mock_drive_service(file_id="bestand456")
-    mock_resp = MagicMock()
-    mock_resp.text = "https://tinyurl.com/kort"
 
-    with (
-        patch("ap06_planner.services.gdrive_service._drive_service", return_value=mock_service),
-        patch("ap06_planner.services.gdrive_service.requests.get", return_value=mock_resp),
-    ):
+    with patch("ap06_planner.services.gdrive_service._drive_service", return_value=mock_service):
         succes, url, fout = upload_xlsx(b"xlsx inhoud", "planning.xlsx")
 
     assert succes
-    assert url == "https://tinyurl.com/kort"
+    assert "bestand456" in url
+    assert "export=download" in url
     assert fout == ""
 
 
@@ -158,13 +154,8 @@ def test_upload_xlsx_maakt_bestand_publiek(monkeypatch, tmp_path):
     monkeypatch.setenv("GDRIVE_FOLDER_ID", "folder123")
 
     mock_service = _mock_drive_service(file_id="bestand456")
-    mock_resp = MagicMock()
-    mock_resp.text = "https://tinyurl.com/kort"
 
-    with (
-        patch("ap06_planner.services.gdrive_service._drive_service", return_value=mock_service),
-        patch("ap06_planner.services.gdrive_service.requests.get", return_value=mock_resp),
-    ):
+    with patch("ap06_planner.services.gdrive_service._drive_service", return_value=mock_service):
         upload_xlsx(b"xlsx inhoud", "planning.xlsx")
 
     mock_service.permissions.return_value.create.assert_called_once_with(

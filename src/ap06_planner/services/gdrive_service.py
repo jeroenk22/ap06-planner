@@ -129,7 +129,8 @@ def upload_xlsx(bestand_bytes: bytes, bestandsnaam: str) -> tuple[bool, str, str
         ).execute()
         _log.debug("Bestand publiek gemaakt: %s", file_id)
 
-        url = verkort_url(f"https://drive.google.com/file/d/{file_id}/view")
+        # Directe download-URL — vereist door TextMeBot om het bestand op te halen
+        url = f"https://drive.google.com/uc?export=download&id={file_id}"
         _log.info("xlsx geüpload naar Drive: %s (%s)", bestandsnaam, url)
         return True, url, ""
 

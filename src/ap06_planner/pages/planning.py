@@ -698,7 +698,6 @@ def render():
                         alle_output,
                         _mendrix_bijgew,
                         uploaded.name,
-                        xlsx_url=_xlsx_url,
                         mendrix_update_resultaten=_mendrix_update_res,
                         mendrix_originele_tijden=_mendrix_orig_tijden,
                     )  # pragma: no cover
