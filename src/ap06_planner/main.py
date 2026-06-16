@@ -8,6 +8,13 @@ Navigatie:
 Start met: streamlit run src/ap06_planner/main.py
 """
 
+import asyncio
+import sys
+
+# Windows: ProactorEventLoop hangt bij Ctrl+C; SelectorEventLoop sluit schoon af.
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 import streamlit as st
 
 # Laad .env

@@ -46,3 +46,15 @@ htmlcov/
 # Uploads (tijdelijk)
 uploads/
 *.xlsx.bak
+
+# Debug dumps (kunnen persoonsgegevens bevatten)
+*_debug.xml
+
+# Mendrix voorbeeldbestanden (vendor-documentatie, niet in repo)
+docs/examples/
+
+# Vendor API-documentatie (niet in repo)
+docs/TinyURL-*.json
+
+# Google service account credentials (bevatten private keys — NOOIT in repo!)
+credentials/

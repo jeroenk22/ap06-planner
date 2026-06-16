@@ -1,7 +1,7 @@
 """Tests voor niet-UI logica in planning.py — _haversine_km, _kies_laatste_tv, _verwerk_monsternemer."""
 
 from datetime import date
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -9,6 +9,7 @@ from ap06_planner.models.schemas import Monsternemer, PlanningRegel, Tijdvenster
 from ap06_planner.pages.planning import (
     _haversine_km,
     _kies_laatste_tv,
+    _tijdafwijking_kleur,
     _verwerk_monsternemer,
 )
 
@@ -69,6 +70,33 @@ def _regel(
 
 
 # ─── _haversine_km ───────────────────────────────────────────────────────────
+
+
+class TestTijdafwijkingKleur:
+    def test_geen_afwijking_is_groen(self):
+        assert _tijdafwijking_kleur("07:00", "07:00") == "groen"
+
+    def test_kleine_afwijking_is_groen(self):
+        assert _tijdafwijking_kleur("07:00", "07:20") == "groen"
+
+    def test_halfuur_is_geel(self):
+        assert _tijdafwijking_kleur("07:00", "07:30") == "geel"
+
+    def test_uur_is_geel(self):
+        assert _tijdafwijking_kleur("07:00", "08:00") == "geel"
+
+    def test_meer_dan_halfuur_is_geel(self):
+        assert _tijdafwijking_kleur("07:00", "08:01") == "geel"
+
+    def test_grote_afwijking_is_geel(self):
+        assert _tijdafwijking_kleur("10:00", "15:00") == "geel"
+
+    def test_negatieve_richting_ook_geel(self):
+        assert _tijdafwijking_kleur("13:00", "07:00") == "geel"
+
+    def test_ongeldige_input_geeft_groen(self):
+        assert _tijdafwijking_kleur("", "07:00") == "groen"
+        assert _tijdafwijking_kleur("07:00", "") == "groen"
 
 
 class TestHaversineKm:
@@ -822,3 +850,92 @@ class TestVerwerkMonsternemer:
         # Tijdvenster wél gevonden — dagblok negeert de wijziging, niet de regel
         assert result["laatste_tijdvenster"] is not None
         assert "7:00" in result["laatste_tijdvenster"] or "18:00" in result["laatste_tijdvenster"]
+
+    def test_wijziging_negeer_slaat_tv_over(self):
+        """Als wijziging.negeer=True in regex-pad wordt het tijdvenster overgeslagen."""
+        from ap06_planner.parsers.wijzigingen import WijzigingenResultaat
+
+        m = _monsternemer(ophaaldagen=["ma"])
+        maandag = date(2026, 6, 1)
+        negeer = WijzigingenResultaat()
+        negeer.negeer = True
+        regels = [_regel(locatie_raw="Bladel 7-18 LAD", wijzigingen="x")]
+
+        with (
+            patch("ap06_planner.pages.planning.zoek_monsternemer", return_value=m),
+            patch("ap06_planner.pages.planning.match_monsternemer_naam", return_value=None),
+            patch("ap06_planner.pages.planning.verwerk_wijzigingen", return_value=negeer),
+            patch("ap06_planner.pages.planning.is_feestdag", return_value=False),
+            patch(
+                "ap06_planner.pages.planning.eerstvolgende_ophaaldag", return_value=(maandag, False)
+            ),
+            patch(
+                "ap06_planner.pages.planning.bereken_aankomsttijd",
+                return_value=("10:00", "23:59", "debug"),
+            ),
+        ):
+            result = _verwerk_monsternemer(
+                naam="Jan de Vries",
+                regels=regels,
+                datum=maandag,
+                dagnaam="maandag",
+                bekende_namen=[],
+                bekende_monsternemers=[],
+                claude_tv_cache=None,
+            )
+
+        assert result is not None
+        # Alle tijdvensters overgeslagen door negeer=True → geen laatste_tijdvenster
+        assert result["laatste_tijdvenster"] is None
+
+
+# ─── render() vroege exits via Streamlit mock ────────────────────────────────
+
+
+class TestRenderEarlyExits:
+    """Dekt de vroege return-paden in render() via een gemockte st-module."""
+
+    def _mock_st(self):
+        mock = MagicMock()
+        mock.spinner.return_value.__enter__ = MagicMock(return_value=None)
+        mock.spinner.return_value.__exit__ = MagicMock(return_value=False)
+        # session_state.pop() moet None retourneren (lege state) zodat pending-action
+        # code niet per ongeluk wordt uitgevoerd met een truthy MagicMock
+        mock.session_state.pop.side_effect = lambda *args, **kwargs: (
+            args[1] if len(args) > 1 else None
+        )
+        return mock
+
+    def test_geen_bestand_geupload(self):
+        """render() keert vroeg terug en toont info als er geen bestand is."""
+        from ap06_planner.pages.planning import render
+
+        st_mock = self._mock_st()
+        st_mock.file_uploader.return_value = None
+
+        with patch("ap06_planner.pages.planning.st", st_mock):
+            render()
+
+        st_mock.info.assert_called_once()
+
+    def test_bestand_inlezen_fout(self):
+        """render() toont error en keert terug als lees_planningsbestand faalt."""
+        from ap06_planner.pages.planning import render
+
+        st_mock = self._mock_st()
+        uploaded_mock = MagicMock()
+        uploaded_mock.name = "test.xlsx"
+        uploaded_mock.read.return_value = b""
+        st_mock.file_uploader.return_value = uploaded_mock
+
+        with (
+            patch("ap06_planner.pages.planning.st", st_mock),
+            patch("ap06_planner.pages.planning.initialiseer_logging"),
+            patch(
+                "ap06_planner.pages.planning.lees_planningsbestand",
+                side_effect=Exception("xlsx-fout"),
+            ),
+        ):
+            render()
+
+        st_mock.error.assert_called_once()

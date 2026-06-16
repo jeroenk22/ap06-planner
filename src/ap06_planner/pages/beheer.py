@@ -62,7 +62,7 @@ def render():
                     unsafe_allow_html=True,
                 )
             else:
-                st.button(label, on_click=_nav, args=(label,), use_container_width=True)
+                st.button(label, on_click=_nav, args=(label,), width="stretch")
 
     st.divider()
 
@@ -100,7 +100,7 @@ def _render_overzicht_tabel(monsternemers: list) -> None:
     ]
     st.dataframe(
         pd.DataFrame(data),
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         column_config={
             "Uiterlijke tijd": st.column_config.TextColumn(
@@ -131,6 +131,7 @@ def _render_overzicht():
     if st.button("Verwijder", type="secondary"):
         if verwijder_monsternemer(int(verwijder_id)):
             st.success(f"Monsternemer #{verwijder_id} verwijderd.")
+            st.session_state["db_version"] = st.session_state.get("db_version", 0) + 1
             st.rerun()
         else:
             st.error(f"Geen monsternemer gevonden met ID {verwijder_id}.")
@@ -283,6 +284,7 @@ def _render_toevoegen():
         m = _dict_naar_monsternemer(data)
         nieuw_id = voeg_monsternemer_toe(m)
         st.session_state["_beheer_success"] = f"{m.volledige_naam} toegevoegd (ID: {nieuw_id})."
+        st.session_state["db_version"] = st.session_state.get("db_version", 0) + 1
         st.rerun()
 
 
@@ -346,6 +348,7 @@ def _render_bewerken():
             return
         if update_monsternemer(gewijzigd):
             st.session_state["_beheer_success"] = f"✓ {gewijzigd.volledige_naam} opgeslagen."
+            st.session_state["db_version"] = st.session_state.get("db_version", 0) + 1
             _nav("Overzicht")
             st.rerun()
         else:
@@ -442,10 +445,11 @@ def _render_import():
         return
 
     st.info(f"Gevonden: {len(preview_data)} monsternemers")
-    st.dataframe(pd.DataFrame(preview_data), use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(preview_data), width="stretch", hide_index=True)
 
     if st.button("Importeer alle monsternemers", type="primary"):
         for m in monsternemers_te_importeren:
             voeg_monsternemer_toe(m)
         st.success(f"{len(monsternemers_te_importeren)} monsternemers geimporteerd.")
+        st.session_state["db_version"] = st.session_state.get("db_version", 0) + 1
         st.rerun()

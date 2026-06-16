@@ -74,7 +74,6 @@ class TestParseJson:
 
 class TestGetClient:
     def test_zonder_api_key_raises(self):
-        cs._client = None
         with (
             patch("os.getenv", return_value=None),
             pytest.raises(ValueError, match="ANTHROPIC_API_KEY"),
@@ -82,18 +81,17 @@ class TestGetClient:
             _get_client()
 
     def test_met_api_key(self):
-        cs._client = None
         with patch("os.getenv", return_value="test-key"), patch("anthropic.Anthropic") as mock_cls:
             mock_cls.return_value = MagicMock()
             client = _get_client()
         assert client is not None
 
-    def test_caching_client(self):
-        fake_client = MagicMock()
-        cs._client = fake_client
-        result = _get_client()
-        assert result is fake_client
-        cs._client = None  # Opschonen
+    def test_elke_call_nieuwe_client(self):
+        with patch("os.getenv", return_value="test-key"), patch("anthropic.Anthropic") as mock_cls:
+            mock_cls.side_effect = [MagicMock(), MagicMock()]
+            c1 = _get_client()
+            c2 = _get_client()
+        assert c1 is not c2
 
 
 class TestVerwerkPlanningsregelsBatch:
@@ -327,4 +325,63 @@ class TestMatchMonsternemeNaam:
     def test_api_fout_geeft_none(self):
         with patch.object(cs, "_get_client", side_effect=Exception("network")):
             result = match_monsternemer_naam("Jan", ["Jan de Vries"])
+        assert result is None
+
+
+class TestMatchNaamMendrix:
+    def _mock_claude(self, tekst: str):
+        blok = MagicMock()
+        blok.type = "text"
+        blok.text = tekst
+        msg = MagicMock()
+        msg.content = [blok]
+        client = MagicMock()
+        client.messages.create.return_value = msg
+        return client
+
+    def test_lege_kandidaten(self):
+        from ap06_planner.services.claude_service import match_naam_mendrix
+
+        assert match_naam_mendrix("Jan", []) is None
+
+    def test_exacte_match(self):
+        from ap06_planner.services.claude_service import match_naam_mendrix
+
+        kandidaten = ["AP06/ONAFH - Kathleen Bouvier", "AP06 - Susan Curma"]
+        with patch.object(
+            cs, "_get_client", return_value=self._mock_claude("AP06/ONAFH - Kathleen Bouvier")
+        ):
+            result = match_naam_mendrix("Kathleen Bouvier", kandidaten)
+        assert result == "AP06/ONAFH - Kathleen Bouvier"
+
+    def test_geen_match(self):
+        from ap06_planner.services.claude_service import match_naam_mendrix
+
+        with patch.object(cs, "_get_client", return_value=self._mock_claude("GEEN")):
+            result = match_naam_mendrix("Onbekend Iemand", ["AP06 - Jan Jansen"])
+        assert result is None
+
+    def test_tolerante_match(self):
+        from ap06_planner.services.claude_service import match_naam_mendrix
+
+        kandidaten = ["AP06/ONAFH - Kathleen Bouvier"]
+        # Claude geeft iets terug dat niet exact matcht maar wel substring is
+        with patch.object(cs, "_get_client", return_value=self._mock_claude("Kathleen Bouvier")):
+            result = match_naam_mendrix("Kathleen Bouvier", kandidaten)
+        assert result == "AP06/ONAFH - Kathleen Bouvier"
+
+    def test_geen_tolerante_match(self):
+        from ap06_planner.services.claude_service import match_naam_mendrix
+
+        kandidaten = ["AP06/ONAFH - Kathleen Bouvier"]
+        # Claude geeft iets terug dat niet in de lijst zit en ook geen substring is
+        with patch.object(cs, "_get_client", return_value=self._mock_claude("Totaal Anders XYZ")):
+            result = match_naam_mendrix("Jan", kandidaten)
+        assert result is None
+
+    def test_api_fout_geeft_none(self):
+        from ap06_planner.services.claude_service import match_naam_mendrix
+
+        with patch.object(cs, "_get_client", side_effect=Exception("netwerk")):
+            result = match_naam_mendrix("Jan", ["AP06 - Jan Jansen"])
         assert result is None
