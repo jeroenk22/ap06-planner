@@ -47,6 +47,41 @@ def stuur_whatsapp(bericht: str) -> tuple[bool, str]:
         return False, "WhatsApp verzending mislukt (zie log voor details)"
 
 
+def stuur_whatsapp_document(document_url: str, bestandsnaam: str = "") -> tuple[bool, str]:
+    """
+    Stuur een document als WhatsApp-bijlage via de TextMeBot API.
+
+    document_url moet een publiek toegankelijke URL zijn (bijv. Google Drive).
+    bestandsnaam is optioneel en overschrijft de weergavenaam in WhatsApp.
+
+    Returns (succes, melding).
+    """
+    api_key = os.getenv("TEXTMEBOT_API_KEY", "")
+    ontvanger = os.getenv("TEXTMEBOT_ONTVANGER", "")
+
+    if not api_key or not ontvanger:
+        return False, "TEXTMEBOT_API_KEY of TEXTMEBOT_ONTVANGER niet ingesteld"
+
+    params: dict = {"recipient": ontvanger, "apikey": api_key, "document": document_url}
+    if bestandsnaam:
+        params["filename"] = bestandsnaam
+
+    _log.info("Document versturen naar %s: %s", ontvanger, document_url)
+    try:
+        resp = requests.get(
+            "https://api.textmebot.com/send.php",
+            params=params,
+            timeout=15,
+        )
+        resp.raise_for_status()
+        tekst = resp.text.strip()
+        _log.info("Document respons: %s", tekst)
+        return True, tekst
+    except requests.RequestException as e:
+        _log.warning("Document sturen mislukt: %s", type(e).__name__, exc_info=True)
+        return False, "Document verzending mislukt (zie log voor details)"
+
+
 def _plandag_sorteersleutel(datum_key: str) -> str:
     """'11-06-2026' → '2026-06-11' voor chronologische sortering."""
     try:

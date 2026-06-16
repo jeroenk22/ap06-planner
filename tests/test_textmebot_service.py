@@ -6,6 +6,7 @@ from ap06_planner.services.textmebot_service import (
     bereken_alle_groen,
     bouw_whatsapp_bericht,
     stuur_whatsapp,
+    stuur_whatsapp_document,
 )
 
 # ---------------------------------------------------------------------------
@@ -45,6 +46,48 @@ def test_stuur_whatsapp_request_fout(monkeypatch):
         succes, melding = stuur_whatsapp("Hallo!")
     assert not succes
     # Foutmelding mag geen URL met API-key bevatten
+    assert "key123" not in melding
+    assert "mislukt" in melding
+
+
+def test_stuur_whatsapp_document_geen_config(monkeypatch):
+    monkeypatch.delenv("TEXTMEBOT_API_KEY", raising=False)
+    monkeypatch.delenv("TEXTMEBOT_ONTVANGER", raising=False)
+    succes, melding = stuur_whatsapp_document("https://drive.google.com/file/d/abc/view")
+    assert not succes
+    assert "niet ingesteld" in melding
+
+
+def test_stuur_whatsapp_document_succes(monkeypatch):
+    monkeypatch.setenv("TEXTMEBOT_API_KEY", "key123")
+    monkeypatch.setenv("TEXTMEBOT_ONTVANGER", "+31612345678")
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.text = "Message queued"
+    with patch(
+        "ap06_planner.services.textmebot_service.requests.get", return_value=mock_resp
+    ) as mock_get:
+        succes, melding = stuur_whatsapp_document(
+            "https://drive.google.com/file/d/abc/view", "planning.xlsx"
+        )
+    assert succes
+    assert melding == "Message queued"
+    _, kwargs = mock_get.call_args
+    assert kwargs["params"]["document"] == "https://drive.google.com/file/d/abc/view"
+    assert kwargs["params"]["filename"] == "planning.xlsx"
+
+
+def test_stuur_whatsapp_document_request_fout(monkeypatch):
+    import requests as req_mod
+
+    monkeypatch.setenv("TEXTMEBOT_API_KEY", "key123")
+    monkeypatch.setenv("TEXTMEBOT_ONTVANGER", "+31612345678")
+    with patch(
+        "ap06_planner.services.textmebot_service.requests.get",
+        side_effect=req_mod.RequestException("timeout"),
+    ):
+        succes, melding = stuur_whatsapp_document("https://drive.google.com/file/d/abc/view")
+    assert not succes
     assert "key123" not in melding
     assert "mislukt" in melding
 

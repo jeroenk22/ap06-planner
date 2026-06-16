@@ -97,30 +97,24 @@ def test_verkort_url_bearer_header_correct(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_upload_xlsx_geen_folder_id_en_credentials(monkeypatch):
-    monkeypatch.delenv("GDRIVE_CREDENTIALS_JSON", raising=False)
+def test_upload_xlsx_geen_folder_id(monkeypatch, tmp_path):
+    token_pad = tmp_path / "token.json"
+    token_pad.write_text("{}")
+    monkeypatch.setenv("GDRIVE_TOKEN_JSON", str(token_pad))
     monkeypatch.delenv("GDRIVE_FOLDER_ID", raising=False)
     succes, url, fout = upload_xlsx(b"data", "test.xlsx")
     assert not succes
     assert url == ""
-    assert "GDRIVE_FOLDER_ID" in fout  # folder_id wordt als eerste gecheckt
-
-
-def test_upload_xlsx_geen_credentials(monkeypatch):
-    monkeypatch.setenv("GDRIVE_FOLDER_ID", "folder123")
-    monkeypatch.delenv("GDRIVE_CREDENTIALS_JSON", raising=False)
-    succes, url, fout = upload_xlsx(b"data", "test.xlsx")
-    assert not succes
-    assert url == ""
-    assert "GDRIVE_CREDENTIALS_JSON" in fout
-
-
-def test_upload_xlsx_geen_folder_id(monkeypatch):
-    monkeypatch.setenv("GDRIVE_CREDENTIALS_JSON", "credentials/test.json")
-    monkeypatch.delenv("GDRIVE_FOLDER_ID", raising=False)
-    succes, url, fout = upload_xlsx(b"data", "test.xlsx")
-    assert not succes
     assert "GDRIVE_FOLDER_ID" in fout
+
+
+def test_upload_xlsx_geen_token(monkeypatch, tmp_path):
+    monkeypatch.setenv("GDRIVE_FOLDER_ID", "folder123")
+    monkeypatch.setenv("GDRIVE_TOKEN_JSON", str(tmp_path / "bestaat_niet.json"))
+    succes, url, fout = upload_xlsx(b"data", "test.xlsx")
+    assert not succes
+    assert url == ""
+    assert "GDRIVE_TOKEN_JSON" in fout
 
 
 # ---------------------------------------------------------------------------
@@ -128,17 +122,18 @@ def test_upload_xlsx_geen_folder_id(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def _mock_drive_service(file_id="abc123", short_url="https://tinyurl.com/xyz"):
+def _mock_drive_service(file_id="abc123"):
     """Bouw een volledig gemockte Drive service."""
     mock_service = MagicMock()
-    mock_service.files().create().execute.return_value = {"id": file_id}
+    mock_service.files.return_value.create.return_value.execute.return_value = {"id": file_id}
+    mock_service.permissions.return_value.create.return_value.execute.return_value = {}
     return mock_service
 
 
 def test_upload_xlsx_succes(monkeypatch, tmp_path):
-    creds_pad = tmp_path / "creds.json"
-    creds_pad.write_text("{}")
-    monkeypatch.setenv("GDRIVE_CREDENTIALS_JSON", str(creds_pad))
+    token_pad = tmp_path / "token.json"
+    token_pad.write_text("{}")
+    monkeypatch.setenv("GDRIVE_TOKEN_JSON", str(token_pad))
     monkeypatch.setenv("GDRIVE_FOLDER_ID", "folder123")
 
     mock_service = _mock_drive_service(file_id="bestand456")
@@ -156,10 +151,32 @@ def test_upload_xlsx_succes(monkeypatch, tmp_path):
     assert fout == ""
 
 
+def test_upload_xlsx_maakt_bestand_publiek(monkeypatch, tmp_path):
+    token_pad = tmp_path / "token.json"
+    token_pad.write_text("{}")
+    monkeypatch.setenv("GDRIVE_TOKEN_JSON", str(token_pad))
+    monkeypatch.setenv("GDRIVE_FOLDER_ID", "folder123")
+
+    mock_service = _mock_drive_service(file_id="bestand456")
+    mock_resp = MagicMock()
+    mock_resp.text = "https://tinyurl.com/kort"
+
+    with (
+        patch("ap06_planner.services.gdrive_service._drive_service", return_value=mock_service),
+        patch("ap06_planner.services.gdrive_service.requests.get", return_value=mock_resp),
+    ):
+        upload_xlsx(b"xlsx inhoud", "planning.xlsx")
+
+    mock_service.permissions.return_value.create.assert_called_once_with(
+        fileId="bestand456",
+        body={"role": "reader", "type": "anyone"},
+    )
+
+
 def test_upload_xlsx_drive_fout(monkeypatch, tmp_path):
-    creds_pad = tmp_path / "creds.json"
-    creds_pad.write_text("{}")
-    monkeypatch.setenv("GDRIVE_CREDENTIALS_JSON", str(creds_pad))
+    token_pad = tmp_path / "token.json"
+    token_pad.write_text("{}")
+    monkeypatch.setenv("GDRIVE_TOKEN_JSON", str(token_pad))
     monkeypatch.setenv("GDRIVE_FOLDER_ID", "folder123")
 
     with patch(

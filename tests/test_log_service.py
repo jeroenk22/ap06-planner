@@ -77,7 +77,7 @@ class TestInitialiseertLogging:
         _verwijder_handlers()
         initialiseer_logging("planning_test.xlsx")
         logbestanden = list((tmp_path / "logs").iterdir())
-        assert len(logbestanden) == 6  # gdrive uitgecomment, nager toegevoegd
+        assert len(logbestanden) == 7  # planning, mendrix, claude, osrm, nager, gdrive, textmebot
 
     def test_logbestanden_bevatten_xlsx_naam(self, tmp_path, monkeypatch):
         monkeypatch.setattr(log_service, "LOG_DIR", tmp_path / "logs")

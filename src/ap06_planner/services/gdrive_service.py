@@ -14,6 +14,7 @@ import requests
 _log = logging.getLogger("ap06.gdrive")
 
 RETENTIE_DAGEN = 30
+_SCOPES = ["https://www.googleapis.com/auth/drive"]
 
 
 def verkort_url(url: str) -> str:
@@ -55,18 +56,22 @@ def verkort_url(url: str) -> str:
 
 
 def _drive_service():
-    """Maak een geauthenticeerde Drive API client."""
-    from google.oauth2 import service_account
+    """Maak een geauthenticeerde Drive API client via OAuth token."""
+    from google.auth.transport.requests import Request
+    from google.oauth2.credentials import Credentials
     from googleapiclient.discovery import build
 
-    credentials_pad = os.getenv("GDRIVE_CREDENTIALS_JSON", "")
-    if not credentials_pad:
-        raise ValueError("GDRIVE_CREDENTIALS_JSON niet ingesteld")
+    token_pad = os.getenv("GDRIVE_TOKEN_JSON", "credentials/gdrive_token.json")
+    if not os.path.exists(token_pad):
+        raise ValueError(f"GDRIVE_TOKEN_JSON niet gevonden: {token_pad}")
 
-    creds = service_account.Credentials.from_service_account_file(
-        credentials_pad,
-        scopes=["https://www.googleapis.com/auth/drive"],
-    )
+    creds = Credentials.from_authorized_user_file(token_pad, _SCOPES)
+    if creds.expired and creds.refresh_token:
+        creds.refresh(Request())
+        with open(token_pad, "w") as f:
+            f.write(creds.to_json())
+        _log.debug("OAuth token vernieuwd en opgeslagen in %s", token_pad)
+
     return build("drive", "v3", credentials=creds, cache_discovery=False)
 
 
@@ -74,16 +79,19 @@ def upload_xlsx(bestand_bytes: bytes, bestandsnaam: str) -> tuple[bool, str, str
     """
     Upload een xlsx-bestand naar de geconfigureerde Drive-map.
 
-    Verwijdert automatisch bestanden ouder dan RETENTIE_DAGEN uit dezelfde map.
+    Maakt het bestand publiek toegankelijk en verwijdert automatisch
+    bestanden ouder dan RETENTIE_DAGEN uit dezelfde map.
 
     Returns (succes, publieke_url, foutmelding).
     Publieke_url is leeg bij mislukking.
     """
     folder_id = os.getenv("GDRIVE_FOLDER_ID", "")
+    token_pad = os.getenv("GDRIVE_TOKEN_JSON", "credentials/gdrive_token.json")
+
     if not folder_id:
         return False, "", "GDRIVE_FOLDER_ID niet ingesteld"
-    if not os.getenv("GDRIVE_CREDENTIALS_JSON"):
-        return False, "", "GDRIVE_CREDENTIALS_JSON niet ingesteld"
+    if not os.path.exists(token_pad):
+        return False, "", f"GDRIVE_TOKEN_JSON niet gevonden: {token_pad}"
 
     try:
         from io import BytesIO
@@ -92,7 +100,6 @@ def upload_xlsx(bestand_bytes: bytes, bestandsnaam: str) -> tuple[bool, str, str
 
         service = _drive_service()
 
-        # Verwijder oude bestanden vóór upload
         _ruim_oude_bestanden_op(service, folder_id)
 
         bestand_meta = {
@@ -115,6 +122,13 @@ def upload_xlsx(bestand_bytes: bytes, bestandsnaam: str) -> tuple[bool, str, str
         )
 
         file_id = bestand.get("id")
+
+        service.permissions().create(
+            fileId=file_id,
+            body={"role": "reader", "type": "anyone"},
+        ).execute()
+        _log.debug("Bestand publiek gemaakt: %s", file_id)
+
         url = verkort_url(f"https://drive.google.com/file/d/{file_id}/view")
         _log.info("xlsx geüpload naar Drive: %s (%s)", bestandsnaam, url)
         return True, url, ""

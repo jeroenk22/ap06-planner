@@ -8,7 +8,7 @@ Maakt per xlsx-inlezing logbestanden aan in de logs/ map:
   {datum} - osrm      - {xlsx}.log  — geocoding en reistijdberekeningen
   {datum} - nager     - {xlsx}.log  — feestdagen API-aanroepen en ophaaldag-logica
   {datum} - textmebot - {xlsx}.log  — WhatsApp berichten via TextMeBot
-  {datum} - gdrive    - {xlsx}.log  — Google Drive uploads en opruimen (uitgeschakeld)
+  {datum} - gdrive    - {xlsx}.log  — Google Drive uploads en opruimen
   {datum} - debug     - {xlsx}.json — volledige JSON output (Stadium 1)
 
 Retentie: bestanden ouder dan LOG_RETENTIE_DAGEN worden automatisch verwijderd.
@@ -39,7 +39,7 @@ _COMPONENT_LOGGERS = {
     "claude": LOGGER_CLAUDE,
     "osrm": LOGGER_OSRM,
     "nager": LOGGER_NAGER,
-    # "gdrive": LOGGER_GDRIVE,  # TODO: terug aanzetten zodra Drive-upload actief is
+    "gdrive": LOGGER_GDRIVE,
     "textmebot": LOGGER_TEXTMEBOT,
 }
 
