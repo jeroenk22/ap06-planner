@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 
 from ap06_planner.services.gdrive_service import (
     RETENTIE_DAGEN,
+    _bestandsnaam_naar_alias,
     _ruim_oude_bestanden_op,
     upload_xlsx,
     verkort_url,
@@ -90,6 +91,57 @@ def test_verkort_url_bearer_header_correct(monkeypatch):
         verkort_url("https://example.com/lang")
     _, kwargs = mock_post.call_args
     assert kwargs["headers"]["Authorization"] == "Bearer test-bearer-token"
+
+
+# ---------------------------------------------------------------------------
+# _bestandsnaam_naar_alias
+# ---------------------------------------------------------------------------
+
+
+def test_alias_normale_naam():
+    assert _bestandsnaam_naar_alias("16-6.xlsx") == "16-6"
+
+
+def test_alias_spaties_vervangen():
+    assert _bestandsnaam_naar_alias("AP06 planning week 24.xlsx") == "AP06-planning-week-24"
+
+
+def test_alias_max_lengte():
+    assert len(_bestandsnaam_naar_alias("a" * 50 + ".xlsx")) <= 30
+
+
+def test_alias_speciale_tekens():
+    assert _bestandsnaam_naar_alias("plan_2026.06.16.xlsx") == "plan-2026-06-16"
+
+
+# ---------------------------------------------------------------------------
+# verkort_url — met alias
+# ---------------------------------------------------------------------------
+
+
+def test_verkort_url_met_alias(monkeypatch):
+    monkeypatch.setenv("TINYURL_API_TOKEN", "mijn-token")
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = {"data": {"tiny_url": "https://tinyurl.com/16-6"}}
+    with patch(
+        "ap06_planner.services.gdrive_service.requests.post", return_value=mock_resp
+    ) as mock_post:
+        result = verkort_url("https://drive.google.com/uc?export=download&id=abc", "16-6")
+    assert result == "https://tinyurl.com/16-6"
+    _, kwargs = mock_post.call_args
+    assert kwargs["json"]["alias"] == "16-6"
+
+
+def test_verkort_url_alias_conflict_valt_terug(monkeypatch):
+    import requests as req_mod
+
+    monkeypatch.setenv("TINYURL_API_TOKEN", "mijn-token")
+    with patch(
+        "ap06_planner.services.gdrive_service.requests.post",
+        side_effect=req_mod.RequestException("422 alias taken"),
+    ):
+        result = verkort_url("https://drive.google.com/uc?export=download&id=abc", "16-6")
+    assert result == "https://drive.google.com/uc?export=download&id=abc"
 
 
 # ---------------------------------------------------------------------------

@@ -7,7 +7,9 @@ ouder dan RETENTIE_DAGEN automatisch bij elke upload.
 
 import logging
 import os
+import re
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import requests
 
@@ -17,24 +19,35 @@ RETENTIE_DAGEN = 30
 _SCOPES = ["https://www.googleapis.com/auth/drive"]
 
 
-def verkort_url(url: str) -> str:
+def _bestandsnaam_naar_alias(bestandsnaam: str) -> str:
+    """Zet een bestandsnaam om naar een geldige TinyURL-alias (max 30 tekens)."""
+    stem = Path(bestandsnaam).stem
+    alias = re.sub(r"[^a-zA-Z0-9-]", "-", stem).strip("-")
+    alias = re.sub(r"-{2,}", "-", alias)
+    return alias[:30]
+
+
+def verkort_url(url: str, alias: str = "") -> str:
     """
     Verkort een URL via de TinyURL API.
 
     Gebruikt TINYURL_API_TOKEN (Bearer auth) als die ingesteld is,
     anders anonieme fallback via api-create.php.
-    Bij elke fout wordt de originele URL teruggegeven.
+    Bij alias-conflict of elke andere fout wordt de originele URL teruggegeven.
     """
     api_token = os.getenv("TINYURL_API_TOKEN", "")
     try:
         if api_token:
+            body: dict = {"url": url, "domain": "tinyurl.com"}
+            if alias:
+                body["alias"] = alias
             resp = requests.post(
                 "https://api.tinyurl.com/create",
                 headers={
                     "Authorization": f"Bearer {api_token}",
                     "Content-Type": "application/json",
                 },
-                json={"url": url, "domain": "tinyurl.com"},
+                json=body,
                 timeout=10,
             )
             resp.raise_for_status()

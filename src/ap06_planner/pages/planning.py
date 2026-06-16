@@ -24,7 +24,15 @@ from ap06_planner.services.claude_service import (
     verwerk_planningsregels_batch,
 )
 from ap06_planner.services.db_service import haal_alle_monsternemers, zoek_monsternemer
-from ap06_planner.services.gdrive_service import upload_xlsx as gdrive_upload_xlsx
+from ap06_planner.services.gdrive_service import (
+    _bestandsnaam_naar_alias,
+)
+from ap06_planner.services.gdrive_service import (
+    upload_xlsx as gdrive_upload_xlsx,
+)
+from ap06_planner.services.gdrive_service import (
+    verkort_url as gdrive_verkort_url,
+)
 from ap06_planner.services.log_service import debug_json_pad, initialiseer_logging, sla_xlsx_op
 from ap06_planner.services.mendrix_service import (
     haal_mendrix_namen_en_ids,
@@ -41,7 +49,6 @@ from ap06_planner.services.textmebot_service import (
     bereken_alle_groen,
     bouw_whatsapp_bericht,
     stuur_whatsapp,
-    stuur_whatsapp_document,
 )
 from ap06_planner.utils.date_utils import DAGAFKORTINGEN, format_datum_nl, is_ophaaldag, parse_datum
 
@@ -686,27 +693,27 @@ def render():
                         )
                         and os.getenv("GDRIVE_FOLDER_ID")
                     )
+                    _download_url = ""  # pragma: no cover
                     _xlsx_url = ""  # pragma: no cover
                     if _heeft_gdrive:  # pragma: no cover
                         with st.spinner("Bestand uploaden naar Drive..."):  # pragma: no cover
-                            _up_ok, _xlsx_url, _up_fout = gdrive_upload_xlsx(
+                            _up_ok, _download_url, _up_fout = gdrive_upload_xlsx(
                                 raw_bytes, uploaded.name
                             )  # pragma: no cover
-                        if not _up_ok:  # pragma: no cover
+                        if _up_ok:  # pragma: no cover
+                            _alias = _bestandsnaam_naar_alias(uploaded.name)  # pragma: no cover
+                            _xlsx_url = gdrive_verkort_url(_download_url, _alias)  # pragma: no cover
+                        else:  # pragma: no cover
                             st.warning(f"⚠️ Drive upload mislukt: {_up_fout}")  # pragma: no cover
                     _bericht = bouw_whatsapp_bericht(
                         alle_output,
                         _mendrix_bijgew,
                         uploaded.name,
+                        xlsx_url=_xlsx_url,
                         mendrix_update_resultaten=_mendrix_update_res,
                         mendrix_originele_tijden=_mendrix_orig_tijden,
                     )  # pragma: no cover
-                    if _xlsx_url:  # pragma: no cover
-                        _succes, _melding = stuur_whatsapp_document(  # pragma: no cover
-                            _xlsx_url, uploaded.name, _bericht
-                        )
-                    else:  # pragma: no cover
-                        _succes, _melding = stuur_whatsapp(_bericht)  # pragma: no cover
+                    _succes, _melding = stuur_whatsapp(_bericht)  # pragma: no cover
                     if _succes:  # pragma: no cover
                         st.session_state[_wa_sleutel] = True  # pragma: no cover
                         st.success("✅ WhatsApp verstuurd!")  # pragma: no cover
