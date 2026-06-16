@@ -702,7 +702,9 @@ def render():
                             )  # pragma: no cover
                         if _up_ok:  # pragma: no cover
                             _alias = _bestandsnaam_naar_alias(uploaded.name)  # pragma: no cover
-                            _xlsx_url = gdrive_verkort_url(_download_url, _alias)  # pragma: no cover
+                            _xlsx_url = gdrive_verkort_url(
+                                _download_url, _alias
+                            )  # pragma: no cover
                         else:  # pragma: no cover
                             st.warning(f"⚠️ Drive upload mislukt: {_up_fout}")  # pragma: no cover
                     _bericht = bouw_whatsapp_bericht(
