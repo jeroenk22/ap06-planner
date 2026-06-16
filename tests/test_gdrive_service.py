@@ -146,6 +146,33 @@ def test_verkort_url_alias_conflict_probeert_volgnummer(monkeypatch):
     assert result == "https://tinyurl.com/ap06-16-6-2"
 
 
+def test_verkort_url_alias_niet_422_breekt_af(monkeypatch):
+    import requests as req_mod
+
+    monkeypatch.setenv("TINYURL_API_TOKEN", "mijn-token")
+    fout_500 = req_mod.HTTPError(response=MagicMock(status_code=500))
+    mock_resp_ok = MagicMock()
+    mock_resp_ok.json.return_value = {"data": {"tiny_url": "https://tinyurl.com/willekeurig"}}
+    with patch(
+        "ap06_planner.services.gdrive_service.requests.post",
+        side_effect=[fout_500, mock_resp_ok],
+    ):
+        result = verkort_url("https://drive.google.com/uc?export=download&id=abc", "ap06-16-6")
+    assert result == "https://tinyurl.com/willekeurig"
+
+
+def test_verkort_url_alias_exception_breekt_af(monkeypatch):
+    monkeypatch.setenv("TINYURL_API_TOKEN", "mijn-token")
+    mock_resp_ok = MagicMock()
+    mock_resp_ok.json.return_value = {"data": {"tiny_url": "https://tinyurl.com/willekeurig"}}
+    with patch(
+        "ap06_planner.services.gdrive_service.requests.post",
+        side_effect=[ConnectionError("netwerk fout"), mock_resp_ok],
+    ):
+        result = verkort_url("https://drive.google.com/uc?export=download&id=abc", "ap06-16-6")
+    assert result == "https://tinyurl.com/willekeurig"
+
+
 def test_verkort_url_alle_aliases_bezet_valt_terug_op_willekeurig(monkeypatch):
     import requests as req_mod
 
