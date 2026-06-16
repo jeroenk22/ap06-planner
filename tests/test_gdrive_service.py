@@ -99,49 +99,66 @@ def test_verkort_url_bearer_header_correct(monkeypatch):
 
 
 def test_alias_normale_naam():
-    assert _bestandsnaam_naar_alias("16-6.xlsx") == "16-6"
+    assert _bestandsnaam_naar_alias("16-6.xlsx") == "ap06-16-6"
 
 
 def test_alias_spaties_vervangen():
-    assert _bestandsnaam_naar_alias("AP06 planning week 24.xlsx") == "AP06-planning-week-24"
+    assert _bestandsnaam_naar_alias("planning week 24.xlsx") == "ap06-planning-week-24"
 
 
 def test_alias_max_lengte():
-    assert len(_bestandsnaam_naar_alias("a" * 50 + ".xlsx")) <= 30
+    assert len(_bestandsnaam_naar_alias("a" * 50 + ".xlsx")) <= 24
 
 
 def test_alias_speciale_tekens():
-    assert _bestandsnaam_naar_alias("plan_2026.06.16.xlsx") == "plan-2026-06-16"
+    assert _bestandsnaam_naar_alias("plan_2026.06.16.xlsx") == "ap06-plan-2026-06-16"
 
 
 # ---------------------------------------------------------------------------
-# verkort_url — met alias
+# verkort_url — met alias en retry
 # ---------------------------------------------------------------------------
 
 
 def test_verkort_url_met_alias(monkeypatch):
     monkeypatch.setenv("TINYURL_API_TOKEN", "mijn-token")
     mock_resp = MagicMock()
-    mock_resp.json.return_value = {"data": {"tiny_url": "https://tinyurl.com/16-6"}}
+    mock_resp.json.return_value = {"data": {"tiny_url": "https://tinyurl.com/ap06-16-6"}}
     with patch(
         "ap06_planner.services.gdrive_service.requests.post", return_value=mock_resp
     ) as mock_post:
-        result = verkort_url("https://drive.google.com/uc?export=download&id=abc", "16-6")
-    assert result == "https://tinyurl.com/16-6"
-    _, kwargs = mock_post.call_args
-    assert kwargs["json"]["alias"] == "16-6"
+        result = verkort_url("https://drive.google.com/uc?export=download&id=abc", "ap06-16-6")
+    assert result == "https://tinyurl.com/ap06-16-6"
+    assert mock_post.call_args[1]["json"]["alias"] == "ap06-16-6"
 
 
-def test_verkort_url_alias_conflict_valt_terug(monkeypatch):
+def test_verkort_url_alias_conflict_probeert_volgnummer(monkeypatch):
     import requests as req_mod
 
     monkeypatch.setenv("TINYURL_API_TOKEN", "mijn-token")
+    fout_422 = req_mod.HTTPError(response=MagicMock(status_code=422))
+    mock_resp_ok = MagicMock()
+    mock_resp_ok.json.return_value = {"data": {"tiny_url": "https://tinyurl.com/ap06-16-6-2"}}
     with patch(
         "ap06_planner.services.gdrive_service.requests.post",
-        side_effect=req_mod.RequestException("422 alias taken"),
+        side_effect=[fout_422, mock_resp_ok],
     ):
-        result = verkort_url("https://drive.google.com/uc?export=download&id=abc", "16-6")
-    assert result == "https://drive.google.com/uc?export=download&id=abc"
+        result = verkort_url("https://drive.google.com/uc?export=download&id=abc", "ap06-16-6")
+    assert result == "https://tinyurl.com/ap06-16-6-2"
+
+
+def test_verkort_url_alle_aliases_bezet_valt_terug_op_willekeurig(monkeypatch):
+    import requests as req_mod
+
+    monkeypatch.setenv("TINYURL_API_TOKEN", "mijn-token")
+    fout_422 = req_mod.HTTPError(response=MagicMock(status_code=422))
+    mock_resp_ok = MagicMock()
+    mock_resp_ok.json.return_value = {"data": {"tiny_url": "https://tinyurl.com/willekeurig"}}
+    with patch(
+        "ap06_planner.services.gdrive_service.requests.post",
+        side_effect=[fout_422, fout_422, fout_422, fout_422, mock_resp_ok],
+    ):
+        result = verkort_url("https://drive.google.com/uc?export=download&id=abc", "ap06-16-6")
+    assert result == "https://tinyurl.com/willekeurig"
 
 
 # ---------------------------------------------------------------------------

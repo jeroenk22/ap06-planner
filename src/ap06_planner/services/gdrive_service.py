@@ -20,11 +20,11 @@ _SCOPES = ["https://www.googleapis.com/auth/drive"]
 
 
 def _bestandsnaam_naar_alias(bestandsnaam: str) -> str:
-    """Zet een bestandsnaam om naar een geldige TinyURL-alias (max 30 tekens)."""
+    """Zet een bestandsnaam om naar een TinyURL-basisalias met 'ap06-' prefix (max 24 tekens)."""
     stem = Path(bestandsnaam).stem
     alias = re.sub(r"[^a-zA-Z0-9-]", "-", stem).strip("-")
     alias = re.sub(r"-{2,}", "-", alias)
-    return alias[:30]
+    return f"ap06-{alias}"[:24]
 
 
 def verkort_url(url: str, alias: str = "") -> str:
@@ -32,22 +32,51 @@ def verkort_url(url: str, alias: str = "") -> str:
     Verkort een URL via de TinyURL API.
 
     Gebruikt TINYURL_API_TOKEN (Bearer auth) als die ingesteld is,
-    anders anonieme fallback via api-create.php.
-    Bij alias-conflict of elke andere fout wordt de originele URL teruggegeven.
+    anders anonieme fallback via api-create.php (geen alias).
+
+    Als alias bezet is, probeert het automatisch alias-2, alias-3 t/m alias-5.
+    Bij aanhoudend conflict of andere fout: willekeurige TinyURL of originele URL.
     """
     api_token = os.getenv("TINYURL_API_TOKEN", "")
+    if api_token and alias:
+        pogingen = [alias] + [f"{alias}-{i}" for i in range(2, 6)]
+        for poging in pogingen:
+            try:
+                resp = requests.post(
+                    "https://api.tinyurl.com/create",
+                    headers={
+                        "Authorization": f"Bearer {api_token}",
+                        "Content-Type": "application/json",
+                    },
+                    json={"url": url, "domain": "tinyurl.com", "alias": poging},
+                    timeout=10,
+                )
+                resp.raise_for_status()
+                kort = resp.json().get("data", {}).get("tiny_url", "")
+                if kort.startswith("http"):
+                    _log.debug("URL verkort met alias '%s': %s", poging, kort)
+                    return kort
+            except requests.HTTPError as e:
+                if e.response is not None and e.response.status_code == 422:
+                    _log.debug("Alias '%s' bezet, volgende poging", poging)
+                    continue
+                _log.warning("URL verkorten mislukt: %s", e, exc_info=True)
+                break
+            except Exception as e:
+                _log.warning("URL verkorten mislukt: %s", e, exc_info=True)
+                break
+        # Alle aliases bezet — probeer willekeurige TinyURL
+        _log.debug("Alle aliases bezet, willekeurige TinyURL aanmaken")
+
     try:
         if api_token:
-            body: dict = {"url": url, "domain": "tinyurl.com"}
-            if alias:
-                body["alias"] = alias
             resp = requests.post(
                 "https://api.tinyurl.com/create",
                 headers={
                     "Authorization": f"Bearer {api_token}",
                     "Content-Type": "application/json",
                 },
-                json=body,
+                json={"url": url, "domain": "tinyurl.com"},
                 timeout=10,
             )
             resp.raise_for_status()
