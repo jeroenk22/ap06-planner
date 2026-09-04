@@ -2,10 +2,10 @@
 
 from unittest.mock import patch
 
-import ap06_planner.pages.beheer as beheer
+import ap06_planner.views.beheer as beheer
 
 with (
-    patch("ap06_planner.pages.beheer.haal_alle_monsternemers", return_value=[]),
-    patch("ap06_planner.pages.beheer.initialiseer_db"),
+    patch("ap06_planner.views.beheer.haal_alle_monsternemers", return_value=[]),
+    patch("ap06_planner.views.beheer.initialiseer_db"),
 ):
     beheer.render()

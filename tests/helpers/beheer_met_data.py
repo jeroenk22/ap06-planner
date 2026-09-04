@@ -2,7 +2,7 @@
 
 from unittest.mock import patch
 
-import ap06_planner.pages.beheer as beheer
+import ap06_planner.views.beheer as beheer
 from ap06_planner.models.schemas import Monsternemer
 
 _m = Monsternemer(
@@ -27,7 +27,7 @@ _m = Monsternemer(
 )
 
 with (
-    patch("ap06_planner.pages.beheer.haal_alle_monsternemers", return_value=[_m]),
-    patch("ap06_planner.pages.beheer.initialiseer_db"),
+    patch("ap06_planner.views.beheer.haal_alle_monsternemers", return_value=[_m]),
+    patch("ap06_planner.views.beheer.initialiseer_db"),
 ):
     beheer.render()

@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from ap06_planner.models.schemas import Monsternemer
-from ap06_planner.pages.beheer import _dict_naar_monsternemer, _heeft_wijzigingen
+from ap06_planner.views.beheer import _dict_naar_monsternemer, _heeft_wijzigingen
 
 
 def _form_data(**kwargs) -> dict:

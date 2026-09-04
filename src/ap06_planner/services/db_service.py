@@ -17,7 +17,7 @@ def _standaard_db_pad() -> Path:
     return Path(os.getenv("DB_PATH") or "data/ap06.db")
 
 
-# Eenmalig bij import bepaald; main.py laadt .env vóór de pages en services importeert.
+# Eenmalig bij import bepaald; main.py laadt .env vóór de views en services importeert.
 DB_DEFAULT = _standaard_db_pad()
 
 CREATE_TABLE_SQL = """

@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from ap06_planner.models.schemas import Monsternemer, PlanningRegel, Tijdvenster
-from ap06_planner.pages.planning import (
+from ap06_planner.views.planning import (
     _haversine_km,
     _kies_laatste_tv,
     _tijdafwijking_kleur,
@@ -144,7 +144,7 @@ class TestKiesLaatsteTv:
     def test_gelijke_eindtijd_met_tiebreak_geocoding_mislukt(self):
         tv1 = _tv(plaats="A", eindtijd="18:00")
         tv2 = _tv(plaats="B", eindtijd="18:00")
-        with patch("ap06_planner.pages.planning._geocodeer", return_value=None):
+        with patch("ap06_planner.views.planning._geocodeer", return_value=None):
             result, warnings = _kies_laatste_tv([tv1, tv2], "Amsterdam", "1234AB")
         assert result is not None
         assert any("geocoding" in w for w in warnings)
@@ -169,7 +169,7 @@ class TestKiesLaatsteTv:
                 return ("Nominatim", ver_coords)
             return None
 
-        with patch("ap06_planner.pages.planning._geocodeer", side_effect=fake_geocodeer):
+        with patch("ap06_planner.views.planning._geocodeer", side_effect=fake_geocodeer):
             result, warnings = _kies_laatste_tv(
                 [tv1, tv2], "Amsterdam", "1234AB", bereken_tiebreak=True
             )
@@ -200,7 +200,7 @@ class TestKiesLaatsteTv:
                 return ("Nominatim", thuis_coords)
             return None  # Alle plaatsnamen mislukken
 
-        with patch("ap06_planner.pages.planning._geocodeer", side_effect=fake_geocodeer):
+        with patch("ap06_planner.views.planning._geocodeer", side_effect=fake_geocodeer):
             result, warnings = _kies_laatste_tv(
                 [tv1, tv2], "Amsterdam", "1234AB", bereken_tiebreak=True
             )
@@ -233,15 +233,15 @@ class TestVerwerkMonsternemer:
         m = monsternemer
 
         with (
-            patch("ap06_planner.pages.planning.zoek_monsternemer", return_value=m),
-            patch("ap06_planner.pages.planning.match_monsternemer_naam", return_value=None),
-            patch("ap06_planner.pages.planning.is_feestdag", return_value=is_feestdag),
+            patch("ap06_planner.views.planning.zoek_monsternemer", return_value=m),
+            patch("ap06_planner.views.planning.match_monsternemer_naam", return_value=None),
+            patch("ap06_planner.views.planning.is_feestdag", return_value=is_feestdag),
             patch(
-                "ap06_planner.pages.planning.eerstvolgende_ophaaldag",
+                "ap06_planner.views.planning.eerstvolgende_ophaaldag",
                 return_value=(eerstvolgende or datum, False),
             ),
             patch(
-                "ap06_planner.pages.planning.bereken_aankomsttijd",
+                "ap06_planner.views.planning.bereken_aankomsttijd",
                 return_value=("19:45", "21:30", "30 min reistijd debug"),
             ),
         ):
@@ -288,14 +288,14 @@ class TestVerwerkMonsternemer:
         regels = [_regel()]
 
         with (
-            patch("ap06_planner.pages.planning.zoek_monsternemer", return_value=None),
-            patch("ap06_planner.pages.planning.match_monsternemer_naam", return_value=None),
-            patch("ap06_planner.pages.planning.is_feestdag", return_value=False),
+            patch("ap06_planner.views.planning.zoek_monsternemer", return_value=None),
+            patch("ap06_planner.views.planning.match_monsternemer_naam", return_value=None),
+            patch("ap06_planner.views.planning.is_feestdag", return_value=False),
             patch(
-                "ap06_planner.pages.planning.eerstvolgende_ophaaldag", return_value=(maandag, False)
+                "ap06_planner.views.planning.eerstvolgende_ophaaldag", return_value=(maandag, False)
             ),
             patch(
-                "ap06_planner.pages.planning.bereken_aankomsttijd",
+                "ap06_planner.views.planning.bereken_aankomsttijd",
                 return_value=("19:45", "23:59", "debug"),
             ),
         ):
@@ -318,8 +318,8 @@ class TestVerwerkMonsternemer:
         regels = [_regel()]
 
         with (
-            patch("ap06_planner.pages.planning.zoek_monsternemer", return_value=m),
-            patch("ap06_planner.pages.planning.match_monsternemer_naam", return_value=None),
+            patch("ap06_planner.views.planning.zoek_monsternemer", return_value=m),
+            patch("ap06_planner.views.planning.match_monsternemer_naam", return_value=None),
         ):
             result = _verwerk_monsternemer(
                 naam="Jan de Vries",
@@ -340,14 +340,14 @@ class TestVerwerkMonsternemer:
         regels = [_regel()]
 
         with (
-            patch("ap06_planner.pages.planning.zoek_monsternemer", return_value=m),
-            patch("ap06_planner.pages.planning.match_monsternemer_naam", return_value=None),
-            patch("ap06_planner.pages.planning.is_feestdag", return_value=True),
+            patch("ap06_planner.views.planning.zoek_monsternemer", return_value=m),
+            patch("ap06_planner.views.planning.match_monsternemer_naam", return_value=None),
+            patch("ap06_planner.views.planning.is_feestdag", return_value=True),
             patch(
-                "ap06_planner.pages.planning.eerstvolgende_ophaaldag", return_value=(woensdag, True)
+                "ap06_planner.views.planning.eerstvolgende_ophaaldag", return_value=(woensdag, True)
             ),
             patch(
-                "ap06_planner.pages.planning.bereken_aankomsttijd",
+                "ap06_planner.views.planning.bereken_aankomsttijd",
                 return_value=("19:45", "21:30", "debug"),
             ),
         ):
@@ -380,14 +380,14 @@ class TestVerwerkMonsternemer:
         }
 
         with (
-            patch("ap06_planner.pages.planning.zoek_monsternemer", return_value=m),
-            patch("ap06_planner.pages.planning.match_monsternemer_naam", return_value=None),
-            patch("ap06_planner.pages.planning.is_feestdag", return_value=False),
+            patch("ap06_planner.views.planning.zoek_monsternemer", return_value=m),
+            patch("ap06_planner.views.planning.match_monsternemer_naam", return_value=None),
+            patch("ap06_planner.views.planning.is_feestdag", return_value=False),
             patch(
-                "ap06_planner.pages.planning.eerstvolgende_ophaaldag", return_value=(maandag, False)
+                "ap06_planner.views.planning.eerstvolgende_ophaaldag", return_value=(maandag, False)
             ),
             patch(
-                "ap06_planner.pages.planning.bereken_aankomsttijd",
+                "ap06_planner.views.planning.bereken_aankomsttijd",
                 return_value=("19:45", "21:30", "debug"),
             ),
         ):
@@ -421,14 +421,14 @@ class TestVerwerkMonsternemer:
         }
 
         with (
-            patch("ap06_planner.pages.planning.zoek_monsternemer", return_value=m),
-            patch("ap06_planner.pages.planning.match_monsternemer_naam", return_value=None),
-            patch("ap06_planner.pages.planning.is_feestdag", return_value=False),
+            patch("ap06_planner.views.planning.zoek_monsternemer", return_value=m),
+            patch("ap06_planner.views.planning.match_monsternemer_naam", return_value=None),
+            patch("ap06_planner.views.planning.is_feestdag", return_value=False),
             patch(
-                "ap06_planner.pages.planning.eerstvolgende_ophaaldag", return_value=(maandag, False)
+                "ap06_planner.views.planning.eerstvolgende_ophaaldag", return_value=(maandag, False)
             ),
             patch(
-                "ap06_planner.pages.planning.bereken_aankomsttijd",
+                "ap06_planner.views.planning.bereken_aankomsttijd",
                 return_value=("19:45", "23:59", "debug"),
             ),
         ):
@@ -454,14 +454,14 @@ class TestVerwerkMonsternemer:
         cache = {("dagblok", None): {"overgeslagen": True}}
 
         with (
-            patch("ap06_planner.pages.planning.zoek_monsternemer", return_value=m),
-            patch("ap06_planner.pages.planning.match_monsternemer_naam", return_value=None),
-            patch("ap06_planner.pages.planning.is_feestdag", return_value=False),
+            patch("ap06_planner.views.planning.zoek_monsternemer", return_value=m),
+            patch("ap06_planner.views.planning.match_monsternemer_naam", return_value=None),
+            patch("ap06_planner.views.planning.is_feestdag", return_value=False),
             patch(
-                "ap06_planner.pages.planning.eerstvolgende_ophaaldag", return_value=(maandag, False)
+                "ap06_planner.views.planning.eerstvolgende_ophaaldag", return_value=(maandag, False)
             ),
             patch(
-                "ap06_planner.pages.planning.bereken_aankomsttijd",
+                "ap06_planner.views.planning.bereken_aankomsttijd",
                 return_value=("10:00", "23:59", "debug"),
             ),
         ):
@@ -485,14 +485,14 @@ class TestVerwerkMonsternemer:
         regels = [_regel(locatie_raw="geen tijdvenster hier")]
 
         with (
-            patch("ap06_planner.pages.planning.zoek_monsternemer", return_value=m),
-            patch("ap06_planner.pages.planning.match_monsternemer_naam", return_value=None),
-            patch("ap06_planner.pages.planning.is_feestdag", return_value=False),
+            patch("ap06_planner.views.planning.zoek_monsternemer", return_value=m),
+            patch("ap06_planner.views.planning.match_monsternemer_naam", return_value=None),
+            patch("ap06_planner.views.planning.is_feestdag", return_value=False),
             patch(
-                "ap06_planner.pages.planning.eerstvolgende_ophaaldag", return_value=(maandag, False)
+                "ap06_planner.views.planning.eerstvolgende_ophaaldag", return_value=(maandag, False)
             ),
             patch(
-                "ap06_planner.pages.planning.bereken_aankomsttijd",
+                "ap06_planner.views.planning.bereken_aankomsttijd",
                 return_value=("10:00", "23:59", "debug"),
             ),
         ):
@@ -518,15 +518,15 @@ class TestVerwerkMonsternemer:
 
         # bereken_aankomsttijd geeft 20:00 terug, dat is > uiterlijke_plantijd=18:00
         with (
-            patch("ap06_planner.pages.planning.zoek_monsternemer", return_value=m),
-            patch("ap06_planner.pages.planning.match_monsternemer_naam", return_value=None),
-            patch("ap06_planner.pages.planning.is_feestdag", return_value=False),
+            patch("ap06_planner.views.planning.zoek_monsternemer", return_value=m),
+            patch("ap06_planner.views.planning.match_monsternemer_naam", return_value=None),
+            patch("ap06_planner.views.planning.is_feestdag", return_value=False),
             patch(
-                "ap06_planner.pages.planning.eerstvolgende_ophaaldag",
+                "ap06_planner.views.planning.eerstvolgende_ophaaldag",
                 return_value=(woensdag, False),
             ),
             patch(
-                "ap06_planner.pages.planning.bereken_aankomsttijd",
+                "ap06_planner.views.planning.bereken_aankomsttijd",
                 return_value=("20:00", "21:30", "debug"),
             ),
         ):
@@ -552,15 +552,15 @@ class TestVerwerkMonsternemer:
         regels = [_regel()]
 
         with (
-            patch("ap06_planner.pages.planning.zoek_monsternemer", return_value=m),
-            patch("ap06_planner.pages.planning.match_monsternemer_naam", return_value=None),
-            patch("ap06_planner.pages.planning.is_feestdag", return_value=False),
+            patch("ap06_planner.views.planning.zoek_monsternemer", return_value=m),
+            patch("ap06_planner.views.planning.match_monsternemer_naam", return_value=None),
+            patch("ap06_planner.views.planning.is_feestdag", return_value=False),
             patch(
-                "ap06_planner.pages.planning.eerstvolgende_ophaaldag",
+                "ap06_planner.views.planning.eerstvolgende_ophaaldag",
                 return_value=(woensdag, False),
             ),
             patch(
-                "ap06_planner.pages.planning.bereken_aankomsttijd",
+                "ap06_planner.views.planning.bereken_aankomsttijd",
                 return_value=("20:00", "21:30", "debug"),
             ),
         ):
@@ -584,15 +584,15 @@ class TestVerwerkMonsternemer:
         regels = [_regel()]
 
         with (
-            patch("ap06_planner.pages.planning.zoek_monsternemer", return_value=m),
-            patch("ap06_planner.pages.planning.match_monsternemer_naam", return_value=None),
-            patch("ap06_planner.pages.planning.is_feestdag", return_value=False),
+            patch("ap06_planner.views.planning.zoek_monsternemer", return_value=m),
+            patch("ap06_planner.views.planning.match_monsternemer_naam", return_value=None),
+            patch("ap06_planner.views.planning.is_feestdag", return_value=False),
             patch(
-                "ap06_planner.pages.planning.eerstvolgende_ophaaldag",
+                "ap06_planner.views.planning.eerstvolgende_ophaaldag",
                 return_value=(woensdag, False),
             ),
             patch(
-                "ap06_planner.pages.planning.bereken_aankomsttijd",
+                "ap06_planner.views.planning.bereken_aankomsttijd",
                 return_value=("20:00", "21:30", "debug"),
             ),
         ):
@@ -616,14 +616,14 @@ class TestVerwerkMonsternemer:
         regels = [_regel()]
 
         with (
-            patch("ap06_planner.pages.planning.zoek_monsternemer", return_value=m),
-            patch("ap06_planner.pages.planning.match_monsternemer_naam", return_value=None),
-            patch("ap06_planner.pages.planning.is_feestdag", return_value=False),
+            patch("ap06_planner.views.planning.zoek_monsternemer", return_value=m),
+            patch("ap06_planner.views.planning.match_monsternemer_naam", return_value=None),
+            patch("ap06_planner.views.planning.is_feestdag", return_value=False),
             patch(
-                "ap06_planner.pages.planning.eerstvolgende_ophaaldag", return_value=(maandag, False)
+                "ap06_planner.views.planning.eerstvolgende_ophaaldag", return_value=(maandag, False)
             ),
             patch(
-                "ap06_planner.pages.planning.bereken_aankomsttijd",
+                "ap06_planner.views.planning.bereken_aankomsttijd",
                 return_value=("19:00", "18:00", "debug"),
             ),
         ):
@@ -646,16 +646,16 @@ class TestVerwerkMonsternemer:
         regels = [_regel(monsternemer_naam="Jan vd Vries")]
 
         with (
-            patch("ap06_planner.pages.planning.zoek_monsternemer", side_effect=[None, m]),
+            patch("ap06_planner.views.planning.zoek_monsternemer", side_effect=[None, m]),
             patch(
-                "ap06_planner.pages.planning.match_monsternemer_naam", return_value="Jan de Vries"
+                "ap06_planner.views.planning.match_monsternemer_naam", return_value="Jan de Vries"
             ),
-            patch("ap06_planner.pages.planning.is_feestdag", return_value=False),
+            patch("ap06_planner.views.planning.is_feestdag", return_value=False),
             patch(
-                "ap06_planner.pages.planning.eerstvolgende_ophaaldag", return_value=(maandag, False)
+                "ap06_planner.views.planning.eerstvolgende_ophaaldag", return_value=(maandag, False)
             ),
             patch(
-                "ap06_planner.pages.planning.bereken_aankomsttijd",
+                "ap06_planner.views.planning.bereken_aankomsttijd",
                 return_value=("19:45", "21:30", "debug"),
             ),
         ):
@@ -688,14 +688,14 @@ class TestVerwerkMonsternemer:
         }
 
         with (
-            patch("ap06_planner.pages.planning.zoek_monsternemer", return_value=m),
-            patch("ap06_planner.pages.planning.match_monsternemer_naam", return_value=None),
-            patch("ap06_planner.pages.planning.is_feestdag", return_value=False),
+            patch("ap06_planner.views.planning.zoek_monsternemer", return_value=m),
+            patch("ap06_planner.views.planning.match_monsternemer_naam", return_value=None),
+            patch("ap06_planner.views.planning.is_feestdag", return_value=False),
             patch(
-                "ap06_planner.pages.planning.eerstvolgende_ophaaldag", return_value=(maandag, False)
+                "ap06_planner.views.planning.eerstvolgende_ophaaldag", return_value=(maandag, False)
             ),
             patch(
-                "ap06_planner.pages.planning.bereken_aankomsttijd",
+                "ap06_planner.views.planning.bereken_aankomsttijd",
                 return_value=("14:00", "21:30", "debug"),
             ),
         ):
@@ -719,8 +719,8 @@ class TestVerwerkMonsternemer:
         regels = [_regel()]
 
         with (
-            patch("ap06_planner.pages.planning.zoek_monsternemer", return_value=m),
-            patch("ap06_planner.pages.planning.match_monsternemer_naam", return_value=None),
+            patch("ap06_planner.views.planning.zoek_monsternemer", return_value=m),
+            patch("ap06_planner.views.planning.match_monsternemer_naam", return_value=None),
         ):
             result = _verwerk_monsternemer(
                 naam="Jan de Vries",
@@ -741,14 +741,14 @@ class TestVerwerkMonsternemer:
         regels = [_regel()]
 
         with (
-            patch("ap06_planner.pages.planning.zoek_monsternemer", return_value=m),
-            patch("ap06_planner.pages.planning.match_monsternemer_naam", return_value=None),
-            patch("ap06_planner.pages.planning.is_feestdag", return_value=False),
+            patch("ap06_planner.views.planning.zoek_monsternemer", return_value=m),
+            patch("ap06_planner.views.planning.match_monsternemer_naam", return_value=None),
+            patch("ap06_planner.views.planning.is_feestdag", return_value=False),
             patch(
-                "ap06_planner.pages.planning.eerstvolgende_ophaaldag", return_value=(maandag, False)
+                "ap06_planner.views.planning.eerstvolgende_ophaaldag", return_value=(maandag, False)
             ),
             patch(
-                "ap06_planner.pages.planning.bereken_aankomsttijd",
+                "ap06_planner.views.planning.bereken_aankomsttijd",
                 return_value=("19:45", "21:30", "debug"),
             ),
         ):
@@ -793,14 +793,14 @@ class TestVerwerkMonsternemer:
         # Geen claude_tv_cache → regex-pad
 
         with (
-            patch("ap06_planner.pages.planning.zoek_monsternemer", return_value=m),
-            patch("ap06_planner.pages.planning.match_monsternemer_naam", return_value=None),
-            patch("ap06_planner.pages.planning.is_feestdag", return_value=False),
+            patch("ap06_planner.views.planning.zoek_monsternemer", return_value=m),
+            patch("ap06_planner.views.planning.match_monsternemer_naam", return_value=None),
+            patch("ap06_planner.views.planning.is_feestdag", return_value=False),
             patch(
-                "ap06_planner.pages.planning.eerstvolgende_ophaaldag", return_value=(maandag, False)
+                "ap06_planner.views.planning.eerstvolgende_ophaaldag", return_value=(maandag, False)
             ),
             patch(
-                "ap06_planner.pages.planning.bereken_aankomsttijd",
+                "ap06_planner.views.planning.bereken_aankomsttijd",
                 return_value=("14:00", "21:30", "debug"),
             ),
         ):
@@ -825,14 +825,14 @@ class TestVerwerkMonsternemer:
         regels = [_regel(locatie_raw="Bladel 7-18 LAD", wijzigingen="dagblok")]
 
         with (
-            patch("ap06_planner.pages.planning.zoek_monsternemer", return_value=m),
-            patch("ap06_planner.pages.planning.match_monsternemer_naam", return_value=None),
-            patch("ap06_planner.pages.planning.is_feestdag", return_value=False),
+            patch("ap06_planner.views.planning.zoek_monsternemer", return_value=m),
+            patch("ap06_planner.views.planning.match_monsternemer_naam", return_value=None),
+            patch("ap06_planner.views.planning.is_feestdag", return_value=False),
             patch(
-                "ap06_planner.pages.planning.eerstvolgende_ophaaldag", return_value=(maandag, False)
+                "ap06_planner.views.planning.eerstvolgende_ophaaldag", return_value=(maandag, False)
             ),
             patch(
-                "ap06_planner.pages.planning.bereken_aankomsttijd",
+                "ap06_planner.views.planning.bereken_aankomsttijd",
                 return_value=("10:00", "23:59", "debug"),
             ),
         ):
@@ -862,15 +862,15 @@ class TestVerwerkMonsternemer:
         regels = [_regel(locatie_raw="Bladel 7-18 LAD", wijzigingen="x")]
 
         with (
-            patch("ap06_planner.pages.planning.zoek_monsternemer", return_value=m),
-            patch("ap06_planner.pages.planning.match_monsternemer_naam", return_value=None),
-            patch("ap06_planner.pages.planning.verwerk_wijzigingen", return_value=negeer),
-            patch("ap06_planner.pages.planning.is_feestdag", return_value=False),
+            patch("ap06_planner.views.planning.zoek_monsternemer", return_value=m),
+            patch("ap06_planner.views.planning.match_monsternemer_naam", return_value=None),
+            patch("ap06_planner.views.planning.verwerk_wijzigingen", return_value=negeer),
+            patch("ap06_planner.views.planning.is_feestdag", return_value=False),
             patch(
-                "ap06_planner.pages.planning.eerstvolgende_ophaaldag", return_value=(maandag, False)
+                "ap06_planner.views.planning.eerstvolgende_ophaaldag", return_value=(maandag, False)
             ),
             patch(
-                "ap06_planner.pages.planning.bereken_aankomsttijd",
+                "ap06_planner.views.planning.bereken_aankomsttijd",
                 return_value=("10:00", "23:59", "debug"),
             ),
         ):
@@ -908,19 +908,19 @@ class TestRenderEarlyExits:
 
     def test_geen_bestand_geupload(self):
         """render() keert vroeg terug en toont info als er geen bestand is."""
-        from ap06_planner.pages.planning import render
+        from ap06_planner.views.planning import render
 
         st_mock = self._mock_st()
         st_mock.file_uploader.return_value = None
 
-        with patch("ap06_planner.pages.planning.st", st_mock):
+        with patch("ap06_planner.views.planning.st", st_mock):
             render()
 
         st_mock.info.assert_called_once()
 
     def test_bestand_inlezen_fout(self):
         """render() toont error en keert terug als lees_planningsbestand faalt."""
-        from ap06_planner.pages.planning import render
+        from ap06_planner.views.planning import render
 
         st_mock = self._mock_st()
         uploaded_mock = MagicMock()
@@ -929,10 +929,10 @@ class TestRenderEarlyExits:
         st_mock.file_uploader.return_value = uploaded_mock
 
         with (
-            patch("ap06_planner.pages.planning.st", st_mock),
-            patch("ap06_planner.pages.planning.initialiseer_logging"),
+            patch("ap06_planner.views.planning.st", st_mock),
+            patch("ap06_planner.views.planning.initialiseer_logging"),
             patch(
-                "ap06_planner.pages.planning.lees_planningsbestand",
+                "ap06_planner.views.planning.lees_planningsbestand",
                 side_effect=Exception("xlsx-fout"),
             ),
         ):
