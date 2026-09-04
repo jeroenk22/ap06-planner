@@ -40,10 +40,10 @@ pagina = st.sidebar.radio(
 )
 
 if pagina == "📋 Planning":
-    from ap06_planner.pages import planning
+    from ap06_planner.views import planning
 
     planning.render()
 elif pagina == "👥 Monsternemer beheer":
-    from ap06_planner.pages import beheer
+    from ap06_planner.views import beheer
 
     beheer.render()

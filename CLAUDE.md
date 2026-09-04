@@ -40,10 +40,12 @@ ruff format .
 ## Projectstructuur
 ```
 src/ap06_planner/
-  main.py          → Streamlit hoofdapp (multipage)
-  pages/
-    01_planning.py → Upload xlsx, verwerk, toon JSON
-    02_beheer.py   → Monsternemer database beheren (CRUD)
+  main.py          → Streamlit hoofdapp (eigen zijbalknavigatie)
+  views/           → NIET hernoemen naar 'pages': Streamlit maakt van een map met
+                     die naam automatisch een paginalijst in de zijbalk, en deze
+                     modules renderen niets op zichzelf (main.py roept render() aan)
+    planning.py    → Upload xlsx, verwerk, toon JSON
+    beheer.py      → Monsternemer database beheren (CRUD)
   parsers/
     xlsx_parser.py → xlsx inlezen, tabblad-selectie, header-detectie
     tijdvenster.py → "Bladel TonTrans 7-18 LAD17" → {plaats, start, eind}
