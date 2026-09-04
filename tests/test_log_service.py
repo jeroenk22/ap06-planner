@@ -13,12 +13,15 @@ from ap06_planner.services.log_service import (
     LOGGER_MENDRIX,
     LOGGER_OSRM,
     LOGGER_PLANNING,
+    MAX_LOGBESTANDEN_PER_COMPONENT,
     _log_bestandsnaam,
     _ruim_oude_logs_op,
     _xlsx_naar_bestandsdeel,
+    _XlsxFileHandler,
     debug_json_pad,
     initialiseer_logging,
     sla_xlsx_op,
+    zet_actieve_xlsx,
 )
 
 
@@ -123,6 +126,44 @@ class TestInitialiseertLogging:
         inhoud = logbestanden[0].read_text(encoding="utf-8")
         assert "eerste regel" in inhoud
         assert "tweede regel" in inhoud
+
+    def test_handlers_stapelen_niet_op_bij_veel_bestanden(self, tmp_path, monkeypatch):
+        """Een langlopend serverproces mag niet eindeloos logbestanden open houden."""
+        monkeypatch.setattr(log_service, "LOG_DIR", tmp_path / "logs")
+        _verwijder_handlers()
+        for nummer in range(MAX_LOGBESTANDEN_PER_COMPONENT + 4):
+            initialiseer_logging(f"week{nummer}.xlsx")
+        logger = logging.getLogger(LOGGER_PLANNING)
+        eigen = [h for h in logger.handlers if isinstance(h, _XlsxFileHandler)]
+        assert len(eigen) == MAX_LOGBESTANDEN_PER_COMPONENT
+
+    def test_logregel_belandt_niet_in_logbestand_van_ander_bestand(self, tmp_path, monkeypatch):
+        """Gelijktijdige gebruikers mogen niet in elkaars logbestanden schrijven."""
+        monkeypatch.setattr(log_service, "LOG_DIR", tmp_path / "logs")
+        _verwijder_handlers()
+        initialiseer_logging("bestand_a.xlsx")
+        initialiseer_logging("bestand_b.xlsx")
+        logging.getLogger(LOGGER_PLANNING).info("regel voor b")
+
+        logdir = tmp_path / "logs"
+        (bestand_a,) = [f for f in logdir.iterdir() if "planning" in f.name and "_a" in f.name]
+        (bestand_b,) = [f for f in logdir.iterdir() if "planning" in f.name and "_b" in f.name]
+        assert "regel voor b" in bestand_b.read_text(encoding="utf-8")
+        assert "regel voor b" not in bestand_a.read_text(encoding="utf-8")
+
+    def test_zet_actieve_xlsx_stuurt_naar_juiste_bestand(self, tmp_path, monkeypatch):
+        """Na een rerun uit de cache moeten vervolgacties weer in het eigen log landen."""
+        monkeypatch.setattr(log_service, "LOG_DIR", tmp_path / "logs")
+        _verwijder_handlers()
+        initialiseer_logging("bestand_a.xlsx")
+        initialiseer_logging("bestand_b.xlsx")
+
+        zet_actieve_xlsx("bestand_a.xlsx")
+        logging.getLogger(LOGGER_PLANNING).info("mendrix-actie op a")
+
+        logdir = tmp_path / "logs"
+        (bestand_a,) = [f for f in logdir.iterdir() if "planning" in f.name and "_a" in f.name]
+        assert "mendrix-actie op a" in bestand_a.read_text(encoding="utf-8")
 
 
 class TestDebugJsonPad:
@@ -240,6 +281,7 @@ def herstel_loggers():
             logger.removeHandler(h)
         logger.propagate = True
         logger.setLevel(logging.WARNING)
+    log_service._lokaal.xlsx_deel = None
 
 
 def _verwijder_handlers():

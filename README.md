@@ -28,6 +28,30 @@ streamlit run src/ap06_planner/main.py
 
 De app opent automatisch op http://localhost:8501
 
+## Draaien op de interne server
+
+```powershell
+# Vanaf de projectroot op de server
+.\scripts\start_server.ps1
+```
+
+De app is dan bereikbaar op `http://<server-ip>:8501` vanaf het interne netwerk.
+
+Aandachtspunten:
+
+- **Working directory.** Alle paden (`data/ap06.db`, `logs/`) zijn relatief aan de
+  working directory. `start_server.ps1` zet die zelf op de projectroot — start de app
+  niet met een los `streamlit run` vanuit een andere map, anders wordt er stilletjes
+  een lege database aangemaakt.
+- **Databasepad.** Zet `DB_PATH` in `.env` als de database buiten de projectmap moet
+  staan (bijvoorbeeld op een gedeelde schijf met een backup).
+- **OSRM.** Zet `OSRM_BASE_URL` op de lokale instance (`http://192.168.4.105:5000`) of
+  laat de regel weg — dat is de default in de code.
+- **Als service.** Registreer `start_server.ps1` via NSSM of de Taakplanner zodat de
+  app een herstart van de server overleeft.
+- **Rechten.** `.env` en `data/ap06.db` bevatten secrets en persoonsgegevens; beperk de
+  NTFS-rechten op die bestanden tot het serviceaccount.
+
 ## Stadia
 
 | Stadium | Status | Beschrijving |
