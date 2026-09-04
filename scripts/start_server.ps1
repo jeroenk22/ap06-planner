@@ -1,4 +1,4 @@
-# Start de AP06 Planner op de interne server (192.168.4.105).
+﻿# Start de AP06 Planner op de interne server (192.168.4.105).
 #
 # Alle paden in de app (data/ap06.db, logs/) zijn relatief aan de working directory,
 # daarom zet dit script die eerst expliciet op de projectroot. Draai dit script als

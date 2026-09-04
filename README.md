@@ -30,12 +30,32 @@ De app opent automatisch op http://localhost:8501
 
 ## Draaien op de interne server
 
+Eenmalige installatie — draai op de server in PowerShell **als administrator**:
+
 ```powershell
-# Vanaf de projectroot op de server
-.\scripts\start_server.ps1
+.\scripts\install_on_server.ps1
 ```
 
-De app is dan bereikbaar op `http://<server-ip>:8501` vanaf het interne netwerk.
+Dit script haalt de code op, maakt de virtual environment, zet de firewallpoort open en
+registreert de app als geplande taak onder het SYSTEM-account. De app start daarmee
+automatisch na een herstart van de server en herstart zelf bij een crash. Het script is
+idempotent: opnieuw draaien rolt een update uit in plaats van te dupliceren.
+
+Twee bestanden moet je daarna zelf plaatsen — ze staan bewust niet in de repo:
+
+- `.env` — kopieer `.env.example` en vul de sleutels in
+- `data/ap06.db` — de monsternemer-database met persoonsgegevens
+
+Beheer van de draaiende app:
+
+```powershell
+Get-ScheduledTaskInfo -TaskName "AP06 Planner"   # status
+Stop-ScheduledTask    -TaskName "AP06 Planner"   # stoppen
+Start-ScheduledTask   -TaskName "AP06 Planner"   # starten
+```
+
+Handmatig starten zonder taak kan met `.\scripts\start_server.ps1`. De app is bereikbaar
+op `http://<server-ip>:8501` vanaf het interne netwerk.
 
 Aandachtspunten:
 
@@ -45,10 +65,9 @@ Aandachtspunten:
   een lege database aangemaakt.
 - **Databasepad.** Zet `DB_PATH` in `.env` als de database buiten de projectmap moet
   staan (bijvoorbeeld op een gedeelde schijf met een backup).
-- **OSRM.** Zet `OSRM_BASE_URL` op de lokale instance (`http://192.168.4.105:5000`) of
-  laat de regel weg — dat is de default in de code.
-- **Als service.** Registreer `start_server.ps1` via NSSM of de Taakplanner zodat de
-  app een herstart van de server overleeft.
+- **OSRM.** Er draait op dit moment geen eigen OSRM-instance; `OSRM_BASE_URL` hoort op
+  `http://router.project-osrm.org` te staan. Laat de regel niet weg — de default in de
+  code wijst naar een server die er niet is, wat elke routeberekening vertraagt.
 - **Rechten.** `.env` en `data/ap06.db` bevatten secrets en persoonsgegevens; beperk de
   NTFS-rechten op die bestanden tot het serviceaccount.
 
