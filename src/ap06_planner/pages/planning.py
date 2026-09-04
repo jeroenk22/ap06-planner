@@ -24,7 +24,12 @@ from ap06_planner.services.claude_service import (
     verwerk_planningsregels_batch,
 )
 from ap06_planner.services.db_service import haal_alle_monsternemers, zoek_monsternemer
-from ap06_planner.services.log_service import debug_json_pad, initialiseer_logging, sla_xlsx_op
+from ap06_planner.services.log_service import (
+    debug_json_pad,
+    initialiseer_logging,
+    sla_xlsx_op,
+    zet_actieve_xlsx,
+)
 from ap06_planner.services.mendrix_service import (
     haal_mendrix_namen_en_ids,
     haal_mendrix_namen_ids_en_xml,
@@ -85,6 +90,9 @@ def render():
         return
 
     raw_bytes = uploaded.read()
+    # Ook bij een rerun uit de cache: logregels van vervolgacties (Mendrix, WhatsApp)
+    # horen bij dit bestand.
+    zet_actieve_xlsx(uploaded.name)
     file_hash = hashlib.md5(raw_bytes).hexdigest()
     db_version = st.session_state.get("db_version", 0)
     cache_key = f"planning_{file_hash}_db{db_version}"

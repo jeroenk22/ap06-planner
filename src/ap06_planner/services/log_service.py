@@ -17,12 +17,22 @@ Retentie: bestanden ouder dan LOG_RETENTIE_DAGEN worden automatisch verwijderd.
 import contextlib
 import logging
 import re
+import threading
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
 LOG_DIR = Path("logs")
 XLSX_DIR = LOG_DIR / "xlsx"
 LOG_RETENTIE_DAGEN = 30
+
+# Maximaal aantal logbestanden dat per component tegelijk open blijft staan. De app draait
+# als langlopend serverproces: zonder grens groeit het aantal handlers bij elke nieuwe xlsx.
+MAX_LOGBESTANDEN_PER_COMPONENT = 8
+
+# Per thread bijgehouden welk xlsx-bestand verwerkt wordt. Streamlit draait elke sessie in
+# een eigen thread, dus hiermee blijven de logs van gelijktijdige gebruikers gescheiden.
+_lokaal = threading.local()
+_handler_lock = threading.Lock()
 
 # Logger-namen per component — gebruik deze namen in de services
 LOGGER_PLANNING = "ap06.planning"
@@ -60,6 +70,23 @@ class _KortLevelFormatter(logging.Formatter):
         return super().format(record)
 
 
+class _XlsxFileHandler(logging.FileHandler):
+    """
+    FileHandler voor het logbestand van één xlsx-inlezing.
+
+    Laat alleen logregels door van threads die op datzelfde xlsx-bestand werken. Zonder
+    dit filter belanden de regels van gelijktijdige gebruikers in elkaars logbestanden,
+    omdat de component-loggers gedeeld zijn binnen het proces.
+    """
+
+    def __init__(self, pad: Path, xlsx_deel: str) -> None:
+        super().__init__(pad, encoding="utf-8", mode="a")
+        self.xlsx_deel = xlsx_deel
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return getattr(_lokaal, "xlsx_deel", None) == self.xlsx_deel
+
+
 def _xlsx_naar_bestandsdeel(xlsx_naam: str) -> str:
     """Haal de bestandsnaam zonder extensie op en saniteer voor gebruik in een bestandsnaam."""
     naam = Path(xlsx_naam).stem
@@ -87,12 +114,33 @@ def _ruim_oude_logs_op() -> None:
                         pad.unlink()
 
 
+def zet_actieve_xlsx(xlsx_naam: str) -> None:
+    """
+    Leg vast welk xlsx-bestand deze thread verwerkt, zodat logregels in het juiste
+    logbestand belanden.
+
+    Aanroepen bij elke rerun waarin een bestand actief is — ook als de verwerking uit
+    de cache komt en initialiseer_logging dus wordt overgeslagen. Zonder deze aanroep
+    worden logregels van bijvoorbeeld een Mendrix-actie door het filter tegengehouden.
+    """
+    _lokaal.xlsx_deel = _xlsx_naar_bestandsdeel(xlsx_naam)
+
+
+def _snoei_handlers(logger: logging.Logger) -> None:
+    """Sluit de oudste logbestanden zodra er te veel per component open staan."""
+    eigen = [h for h in logger.handlers if isinstance(h, _XlsxFileHandler)]
+    for oud in eigen[:-MAX_LOGBESTANDEN_PER_COMPONENT]:
+        logger.removeHandler(oud)
+        with contextlib.suppress(OSError):
+            oud.close()
+
+
 def initialiseer_logging(xlsx_naam: str) -> None:
     """
     Stel logging in voor een xlsx-inlezing.
 
-    Voegt FileHandlers toe aan de vier component-loggers (planning, mendrix,
-    claude, osrm). Als dezelfde xlsx op dezelfde dag opnieuw wordt ingelezen,
+    Voegt FileHandlers toe aan de component-loggers (planning, mendrix, claude, osrm,
+    nager, textmebot). Als dezelfde xlsx op dezelfde dag opnieuw wordt ingelezen,
     worden de regels aan het bestaande logbestand toegevoegd (mode='a').
 
     Verwijdert ook automatisch logbestanden ouder dan LOG_RETENTIE_DAGEN.
@@ -102,29 +150,34 @@ def initialiseer_logging(xlsx_naam: str) -> None:
     _ruim_oude_logs_op()
 
     xlsx_deel = _xlsx_naar_bestandsdeel(xlsx_naam)
+    zet_actieve_xlsx(xlsx_naam)
     formatter = _KortLevelFormatter(
         fmt="[%(asctime)s] [%(kort_level)s] %(message)s",
         datefmt="%H:%M:%S",
     )
 
-    for component, logger_naam in _COMPONENT_LOGGERS.items():
-        logger = logging.getLogger(logger_naam)
-        logger.setLevel(logging.DEBUG)
+    with _handler_lock:
+        for component, logger_naam in _COMPONENT_LOGGERS.items():
+            logger = logging.getLogger(logger_naam)
+            logger.setLevel(logging.DEBUG)
 
-        pad = LOG_DIR / _log_bestandsnaam(component, xlsx_deel, "log")
+            pad = LOG_DIR / _log_bestandsnaam(component, xlsx_deel, "log")
 
-        # Voeg alleen een nieuwe handler toe als die er nog niet is voor dit pad
-        al_aanwezig = any(
-            isinstance(h, logging.FileHandler) and Path(h.baseFilename).resolve() == pad.resolve()
-            for h in logger.handlers
-        )
-        if not al_aanwezig:
-            handler = logging.FileHandler(pad, encoding="utf-8", mode="a")
-            handler.setFormatter(formatter)
-            logger.addHandler(handler)
+            # Voeg alleen een nieuwe handler toe als die er nog niet is voor dit pad
+            al_aanwezig = any(
+                isinstance(h, logging.FileHandler)
+                and Path(h.baseFilename).resolve() == pad.resolve()
+                for h in logger.handlers
+            )
+            if not al_aanwezig:
+                handler = _XlsxFileHandler(pad, xlsx_deel)
+                handler.setFormatter(formatter)
+                logger.addHandler(handler)
 
-        # Voorkom dubbele output via de root logger
-        logger.propagate = False
+            _snoei_handlers(logger)
+
+            # Voorkom dubbele output via de root logger
+            logger.propagate = False
 
 
 def sla_xlsx_op(xlsx_naam: str, inhoud: bytes) -> None:

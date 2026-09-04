@@ -5,12 +5,20 @@ De database bevat persoonsgegevens en staat NIET in de repository.
 Locatie: data/ap06.db (configureerbaar via DB_PATH in .env)
 """
 
+import os
 import sqlite3
 from pathlib import Path
 
 from ap06_planner.models.schemas import Monsternemer
 
-DB_DEFAULT = Path("data/ap06.db")
+
+def _standaard_db_pad() -> Path:
+    """Het databasepad uit DB_PATH, of data/ap06.db als die niet is ingesteld."""
+    return Path(os.getenv("DB_PATH") or "data/ap06.db")
+
+
+# Eenmalig bij import bepaald; main.py laadt .env vóór de pages en services importeert.
+DB_DEFAULT = _standaard_db_pad()
 
 CREATE_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS monsternemers (

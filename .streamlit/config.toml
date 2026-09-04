@@ -1,0 +1,10 @@
+# Instellingen die zowel lokaal als op de server gelden.
+# Serverspecifieke opties (adres, headless, watcher) staan in scripts/start_server.ps1,
+# zodat lokaal ontwikkelen met auto-rerun en tracebacks blijft werken.
+
+[server]
+# De planningsbestanden zijn klein; beperk de upload om geheugen te sparen.
+maxUploadSize = 25
+
+[browser]
+gatherUsageStats = false

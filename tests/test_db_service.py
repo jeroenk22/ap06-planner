@@ -1,9 +1,11 @@
 """Tests voor db_service — SQLite CRUD met tijdelijke database."""
 
 import sqlite3
+from pathlib import Path
 
 from ap06_planner.models.schemas import Monsternemer
 from ap06_planner.services.db_service import (
+    _standaard_db_pad,
     haal_alle_monsternemers,
     initialiseer_db,
     update_monsternemer,
@@ -269,3 +271,17 @@ class TestVerwijderMonsternemer:
         """verwijder_monsternemer roept initialiseer_db aan — mag niet crashen."""
         db = tmp_path / "nieuw.db"
         assert verwijder_monsternemer(1, db) is False
+
+
+class TestStandaardDbPad:
+    def test_gebruikt_db_path_uit_omgeving(self, monkeypatch):
+        monkeypatch.setenv("DB_PATH", "D:/ap06/prod.db")
+        assert _standaard_db_pad() == Path("D:/ap06/prod.db")
+
+    def test_valt_terug_op_data_map(self, monkeypatch):
+        monkeypatch.delenv("DB_PATH", raising=False)
+        assert _standaard_db_pad() == Path("data/ap06.db")
+
+    def test_lege_db_path_valt_terug(self, monkeypatch):
+        monkeypatch.setenv("DB_PATH", "")
+        assert _standaard_db_pad() == Path("data/ap06.db")
